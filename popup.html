@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { width: 320px; padding: 15px; font-family: sans-serif; }
+    h1 { font-size: 16px; margin: 0 0 15px 0; }
+    .stat { margin-bottom: 20px; font-size: 14px; color: #555; }
+    
+    /* 統合されたメインボタン */
+    #btn-process {
+      width: 100%;
+      padding: 15px;
+      cursor: pointer;
+      border: none;
+      border-radius: 6px;
+      font-weight: bold;
+      font-size: 14px;
+      background-color: #d63384; /* 目立つ色 */
+      color: white;
+      transition: background-color 0.2s;
+    }
+    #btn-process:hover { background-color: #a8165e; }
+    #btn-process:disabled { background-color: #ccc; cursor: not-allowed; }
+
+    #status { 
+      margin-top: 15px; 
+      font-size: 12px; 
+      min-height: 1.4em; 
+      color: #333;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <h1>Safe Wipe Bookmarks</h1>
+  
+  <div class="stat">
+    現在の登録数: <span id="count" style="font-weight:bold;">...</span>
+  </div>
+
+  <button id="btn-process">📦 バックアップして全削除</button>
+  
+  <div id="status"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

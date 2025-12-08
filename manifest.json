@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "My Bookmark Manager",
+  "version": "1.0",
+  "description": "ブックマークを一括管理・全削除するツール",
+  "permissions": [
+    "bookmarks",
+    "readingList",
+    "downloads"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  }
+}
