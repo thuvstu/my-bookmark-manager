@@ -145,7 +145,7 @@ function downloadFileAndWait(url, name) {
 }
 
 // ---------------------------------------------------
-// 3. YouTube 管理機能 (修正箇所)
+// 3. YouTube 管理機能 (認証強化版)
 // ---------------------------------------------------
 const btnYt = document.getElementById('btn-yt-clone');
 
@@ -158,7 +158,6 @@ btnYt.addEventListener('click', async () => {
   
   setStatus("📺 YouTube操作スクリプトを実行中...");
   
-  // 【重要】world: 'MAIN' を指定することで、ページ内の変数(API Key)にアクセス可能にします
   chrome.scripting.executeScript({
     target: { tabId: tab.id },
     function: runYoutubeCloner,
@@ -169,13 +168,14 @@ btnYt.addEventListener('click', async () => {
 });
 
 async function runYoutubeCloner() {
+  // ログ表示
   const log = (msg) => {
     console.log(`[YT Manager] ${msg}`);
     let box = document.getElementById('yt-man-log');
     if (!box) {
       box = document.createElement('div');
       box.id = 'yt-man-log';
-      box.style.cssText = "position:fixed; bottom:10px; right:10px; width:320px; height:200px; background:rgba(0,0,0,0.85); color:#0f0; padding:10px; font-size:12px; overflow-y:scroll; z-index:9999; border-radius:8px;";
+      box.style.cssText = "position:fixed; bottom:10px; right:10px; width:340px; height:220px; background:rgba(0,0,0,0.9); color:#0f0; padding:10px; font-size:12px; overflow-y:scroll; z-index:9999; border-radius:8px; font-family:monospace;";
       document.body.appendChild(box);
     }
     box.innerText += msg + "\n";
@@ -185,20 +185,59 @@ async function runYoutubeCloner() {
   log("開始: 動画リストの取得を開始します...");
 
   try {
+    // --- 認証ヘッダー(SAPISIDHASH)生成関数 ---
+    const getAuthHeaders = async () => {
+      if (!document.cookie.includes('SAPISID')) {
+        throw new Error("ログイン状態を確認できません(SAPISID not found)。");
+      }
+      
+      // CookieからSAPISIDを取得
+      const match = document.cookie.match(/SAPISID=([^;]+)/);
+      const sapisid = decodeURIComponent(match[1]);
+      
+      // ハッシュ生成 (Time + SAPISID + Origin)
+      const origin = window.location.origin;
+      const now = Math.floor(Date.now() / 1000);
+      const msg = `${now} ${sapisid} ${origin}`;
+      
+      const encoder = new TextEncoder();
+      const data = encoder.encode(msg);
+      const hashBuffer = await crypto.subtle.digest('SHA-1', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      
+      return {
+        "Authorization": `SAPISIDHASH ${now}_${hashHex}`,
+        "X-Origin": origin,
+        "Content-Type": "application/json"
+      };
+    };
+
+    // --- メイン処理 ---
+
     // 1. スクロールしてID収集
     const ids = new Set();
     let noChange = 0;
-    for (let i = 0; i < 100; i++) {
+    // ※ 高評価リストが多い場合は回数を増やす
+    for (let i = 0; i < 150; i++) {
       window.scrollTo(0, document.documentElement.scrollHeight);
       await new Promise(r => setTimeout(r, 1500));
+      
       const links = document.querySelectorAll('a#video-title');
       const prevSize = ids.size;
       links.forEach(a => {
         const v = new URL(a.href).searchParams.get('v');
         if (v) ids.add(v);
       });
+      
       log(`スクロール ${i+1}: 現在 ${ids.size} 件検出`);
-      if (ids.size === prevSize) { noChange++; if(noChange >= 3) break; } else { noChange = 0; }
+      
+      if (ids.size === prevSize) { 
+        noChange++; 
+        if(noChange >= 3) break; // 3回連続で変化なければ終了
+      } else { 
+        noChange = 0; 
+      }
       if (ids.size >= 5000) break;
     }
 
@@ -209,43 +248,68 @@ async function runYoutubeCloner() {
     const title = `Liked Backup ${new Date().toISOString().slice(0,10)}`;
     log(`プレイリスト作成中: ${title}`);
     
-    // APIキーのチェック
+    // APIキーとコンテキストの取得
     if (!window.ytcfg || !window.ytcfg.data_ || !window.ytcfg.data_.INNERTUBE_API_KEY) {
-      throw new Error("APIキーが見つかりません。YouTubeのページが正しく読み込まれているか確認してください。");
+      throw new Error("APIキーが見つかりません。リロードしてください。");
     }
     const key = window.ytcfg.data_.INNERTUBE_API_KEY;
     const ctx = window.ytcfg.data_.INNERTUBE_CONTEXT;
-
-    const res = await fetch(`https://www.youtube.com/youtubei/v1/playlist/create?key=${key}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ context: ctx, title: title, privacyStatus: "PRIVATE" })
-    });
-    const json = await res.json();
-    if (!json.playlistId) throw new Error("プレイリスト作成に失敗しました: " + JSON.stringify(json));
     
-    const plId = json.playlistId;
+    // 認証ヘッダーを生成
+    const authHeaders = await getAuthHeaders();
+
+    const createRes = await fetch(`https://www.youtube.com/youtubei/v1/playlist/create?key=${key}`, {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ 
+        context: ctx, 
+        title: title, 
+        privacyStatus: "PRIVATE" 
+      })
+    });
+    
+    if (!createRes.ok) {
+      const errText = await createRes.text();
+      throw new Error(`作成失敗(${createRes.status}): ${errText}`);
+    }
+    
+    const createJson = await createRes.json();
+    if (!createJson.playlistId) throw new Error("レスポンスにplaylistIdが含まれていません。");
+    
+    const plId = createJson.playlistId;
     log(`作成成功 ID: ${plId}`);
 
     // 3. 動画追加
     log(`動画を追加中 (${videoIds.length}件)...`);
-    const chunkSize = 50;
+    const chunkSize = 50; // API制限回避のため分割
+    
     for (let i = 0; i < videoIds.length; i += chunkSize) {
       const chunk = videoIds.slice(i, i + chunkSize);
-      await fetch(`https://www.youtube.com/youtubei/v1/browse/edit_playlist?key=${key}`, {
+      const actions = chunk.map(v => ({ action: "ACTION_ADD_VIDEO", addedVideoId: v }));
+      
+      const addRes = await fetch(`https://www.youtube.com/youtubei/v1/browse/edit_playlist?key=${key}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders,
         body: JSON.stringify({
-          context: ctx, playlistId: plId,
-          actions: chunk.map(v => ({ action: "ACTION_ADD_VIDEO", addedVideoId: v }))
+          context: ctx, 
+          playlistId: plId,
+          actions: actions
         })
       });
+      
+      if (!addRes.ok) {
+        log(`⚠️ 追加失敗(Chunk ${i}): ${addRes.status}`);
+      } else {
+        const addJson = await addRes.json();
+        // 成功ステータス(status: 'STATUS_SUCCEEDED')を確認する場合もあるが、ここでは省略
+      }
+      
       log(`進捗: ${Math.min(i+chunkSize, videoIds.length)} / ${videoIds.length}`);
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, 600)); // スパム扱い防止のウェイト
     }
     
     log("🎉 全て完了しました！");
-    alert("バックアップ完了しました！YouTubeのライブラリを確認してください。");
+    alert(`バックアップ完了！\nプレイリスト「${title}」を確認してください。`);
 
   } catch (e) {
     log(`❌ エラー: ${e.message}`);
