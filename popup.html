@@ -3,45 +3,84 @@
 <head>
   <meta charset="UTF-8">
   <style>
-    body { width: 320px; padding: 15px; font-family: sans-serif; }
-    h1 { font-size: 16px; margin: 0 0 15px 0; }
-    .stat { margin-bottom: 20px; font-size: 14px; color: #555; }
+    body { width: 360px; padding: 0; margin: 0; font-family: sans-serif; background: #f9f9f9; }
     
-    /* 統合されたメインボタン */
-    #btn-process {
-      width: 100%;
-      padding: 15px;
-      cursor: pointer;
-      border: none;
-      border-radius: 6px;
-      font-weight: bold;
-      font-size: 14px;
-      background-color: #d63384; /* 目立つ色 */
-      color: white;
-      transition: background-color 0.2s;
+    /* タブのスタイル */
+    .tabs { display: flex; border-bottom: 1px solid #ccc; background: #fff; }
+    .tab-btn {
+      flex: 1; padding: 12px; cursor: pointer; border: none; background: none;
+      font-weight: bold; font-size: 13px; color: #666;
     }
-    #btn-process:hover { background-color: #a8165e; }
-    #btn-process:disabled { background-color: #ccc; cursor: not-allowed; }
+    .tab-btn:hover { background: #f0f0f0; }
+    .tab-btn.active {
+      color: #007bff; border-bottom: 3px solid #007bff; background: #fff;
+    }
+
+    /* コンテンツエリア */
+    .content { padding: 15px; display: none; }
+    .content.active { display: block; }
+
+    /* 各種パーツ */
+    h2 { font-size: 14px; margin: 0 0 10px 0; color: #333; }
+    .stat { font-size: 13px; color: #555; margin-bottom: 5px; }
+    .badge {
+      display: inline-block; padding: 3px 6px; border-radius: 4px;
+      background: #e9ecef; font-size: 11px; margin-right: 5px; font-weight: bold;
+    }
+    
+    button.action-btn {
+      width: 100%; padding: 12px; margin-top: 15px; cursor: pointer;
+      border: none; border-radius: 6px; font-weight: bold; color: white;
+      transition: opacity 0.2s;
+    }
+    button.action-btn:disabled { background-color: #ccc !important; cursor: not-allowed; }
+    button.action-btn:hover { opacity: 0.9; }
+
+    /* ブラウザ用ボタン色 */
+    #btn-browser-process { background-color: #6f42c1; } /* 紫 */
+    /* YouTube用ボタン色 */
+    #btn-yt-clone { background-color: #ff0000; } /* 赤 */
 
     #status { 
-      margin-top: 15px; 
-      font-size: 12px; 
-      min-height: 1.4em; 
-      color: #333;
-      white-space: pre-wrap;
+      padding: 10px; font-size: 11px; color: #333; 
+      background: #fff; border-top: 1px solid #eee;
+      white-space: pre-wrap; min-height: 40px;
     }
+    .note { font-size: 11px; color: #666; margin-top: 5px; }
   </style>
 </head>
 <body>
-  <h1>Safe Wipe Bookmarks</h1>
-  
-  <div class="stat">
-    現在の登録数: <span id="count" style="font-weight:bold;">...</span>
+
+  <!-- タブメニュー -->
+  <div class="tabs">
+    <button id="tab-1" class="tab-btn active">🌐 ブラウザ管理</button>
+    <button id="tab-2" class="tab-btn">📺 YouTube</button>
   </div>
 
-  <button id="btn-process">📦 バックアップして全削除</button>
-  
-  <div id="status"></div>
+  <!-- コンテンツ1: ブラウザデータ管理 -->
+  <div id="view-1" class="content active">
+    <h2>データ状況</h2>
+    <div class="stat"><span class="badge">Bookmarks</span> <span id="count-bm">...</span></div>
+    <div class="stat"><span class="badge">History</span> <span id="count-hist">...</span></div>
+
+    <button id="btn-browser-process" class="action-btn">
+      📦 バックアップ & 全削除
+    </button>
+    <p class="note">※ブックマーク(HTML)と履歴(JSON)を保存後に削除します。</p>
+  </div>
+
+  <!-- コンテンツ2: YouTube管理 -->
+  <div id="view-2" class="content">
+    <h2>高評価リストの退避</h2>
+    <p class="note">YouTubeを開き、「高く評価した動画」ページへ移動してから実行してください。</p>
+    
+    <button id="btn-yt-clone" class="action-btn">
+      🔄 新規プレイリストへコピー
+    </button>
+  </div>
+
+  <!-- ステータス表示エリア (共通) -->
+  <div id="status">準備完了</div>
 
   <script src="popup.js"></script>
 </body>

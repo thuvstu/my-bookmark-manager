@@ -1,12 +1,18 @@
 {
   "manifest_version": 3,
-  "name": "My Bookmark Manager",
-  "version": "1.0",
-  "description": "ブックマークを一括管理・全削除するツール",
+  "name": "Browser & YouTube Master Tool",
+  "version": "5.0",
+  "description": "ブックマーク/履歴の完全管理とYouTube高評価のバックアップ",
   "permissions": [
     "bookmarks",
     "readingList",
-    "downloads"
+    "downloads",
+    "history",
+    "scripting",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://www.youtube.com/*"
   ],
   "action": {
     "default_popup": "popup.html"
