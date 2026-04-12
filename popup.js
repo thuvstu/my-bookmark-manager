@@ -4,127 +4,241 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 const statusDiv = document.getElementById('status');
-
-// --- UI制御 ---
-function setupTabs() {
-  const tab1 = document.getElementById('tab-1');
-  const tab2 = document.getElementById('tab-2');
-  const view1 = document.getElementById('view-1');
-  const view2 = document.getElementById('view-2');
-  const toggle = (t1, t2, v1, v2) => {
-    t1.classList.add('active'); t2.classList.remove('active');
-    v1.classList.add('active'); v2.classList.remove('active');
-  };
-  tab1.addEventListener('click', () => toggle(tab1, tab2, view1, view2));
-  tab2.addEventListener('click', () => toggle(tab2, tab1, view2, view1));
-}
-
 function setStatus(msg) { statusDiv.textContent = msg; }
 
+function setupTabs() {
+  const t1 = document.getElementById('tab-1'), t2 = document.getElementById('tab-2');
+  const v1 = document.getElementById('view-1'), v2 = document.getElementById('view-2');
+  const sw = (a,b,c,d) => { a.classList.add('active'); b.classList.remove('active'); c.classList.add('active'); d.classList.remove('active'); };
+  t1.onclick = () => sw(t1,t2,v1,v2); t2.onclick = () => sw(t2,t1,v2,v1);
+}
+
 // =========================================================================
-//  ブラウザ管理機能
+//  Part 1: ブラウザデータ管理機能 (完全版)
 // =========================================================================
 const btnBrowser = document.getElementById('btn-browser-process');
+
 btnBrowser.addEventListener('click', async () => {
-  if(!confirm("【警告】\nブラウザのブックマークと履歴をバックアップ後に削除します。\nよろしいですか？")) return;
+  const c = confirm("【警告】\n以下のデータを保存し、その後「全て削除」します。\n\n・ブックマーク\n・リーディングリスト\n・履歴\n\nこの操作は取り消せません。よろしいですか？");
+  if(!c) return;
+
   try {
     btnBrowser.disabled = true;
-    setStatus("🚀 開始: ブックマーク保存中...");
+    
+    // 1. HTMLバックアップ (ブックマーク + リーディングリスト)
+    setStatus("🚀 1/3: ブックマークとリーディングリストを保存中...");
     const bmUrl = await createBookmarkHTMLUrl();
-    await downloadFileAndWait(bmUrl, "bookmarks_backup.html");
-    
-    setStatus("履歴保存中...");
+    await downloadFileAndWait(bmUrl, "bookmarks_readinglist_backup.html");
+
+    // 2. JSONバックアップ (履歴 + YouTube履歴)
+    setStatus("🚀 2/3: 履歴データを保存中...");
     const histUrl = await createHistoryJsonUrl();
-    await downloadFileAndWait(histUrl, "history_youtube_backup.json");
-    
-    setStatus("削除実行中...");
-    await deleteAllBookmarks();
-    setStatus("✅ 完了しました！");
+    await downloadFileAndWait(histUrl, "history_backup.json");
+
+    // 3. 全削除実行
+    setStatus("🗑️ 3/3: データを削除しています...");
+    await deleteAllBrowsingData();
+
+    setStatus("✅ 全ての処理が完了しました！");
     updateCounts();
+
   } catch (e) {
     setStatus(`⚠️ エラー: ${e.message}`);
+    console.error(e);
   } finally {
     btnBrowser.disabled = false;
   }
 });
 
-// (ブラウザ用ヘルパー関数群)
+// --- データカウント更新 ---
 async function updateCounts() {
+  // Bookmarks
   chrome.bookmarks.getTree(t => {
     let c = 0; const f = n => { n.forEach(i => { if(i.url)c++; if(i.children)f(i.children); }) }; f(t);
     document.getElementById('count-bm').textContent = c + " items";
   });
+  
+  // Reading List
+  if (chrome.readingList) {
+    try {
+      const items = await chrome.readingList.query({});
+      document.getElementById('count-rl').textContent = items.length + " items";
+    } catch(e) {
+      document.getElementById('count-rl').textContent = "-";
+    }
+  }
+
+  // History
   chrome.history.search({text:'', maxResults:1000}, r => {
-    document.getElementById('count-hist').textContent = (r.length>=1000?"1000+":r.length) + " items";
+    document.getElementById('count-hist').textContent = (r.length>=1000 ? "1000+" : r.length) + " items";
   });
 }
+
+// --- HTML作成 (Bookmarks + ReadingList) ---
 async function createBookmarkHTMLUrl() {
   const tree = await chrome.bookmarks.getTree();
-  let rl = []; try{if(chrome.readingList) rl = await chrome.readingList.query({});}catch(e){}
-  let h = `<!DOCTYPE NETSCAPE-Bookmark-file-1>\n<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">\n<TITLE>Bookmarks</TITLE>\n<H1>Bookmarks</H1>\n<DL><p>\n`;
+  let rl = [];
+  if (chrome.readingList) {
+    try { rl = await chrome.readingList.query({}); } catch(e){}
+  }
+
+  let html = `<!DOCTYPE NETSCAPE-Bookmark-file-1>\n<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">\n<TITLE>Bookmarks</TITLE>\n<H1>Bookmarks</H1>\n<DL><p>\n`;
   const esc = s => s ? s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;") : "";
-  const p = n => { let o=""; if(n.url)o+=`    <DT><A HREF="${esc(n.url)}">${esc(n.title)}</A>\n`; else if(n.children){o+=`    <DT><H3>${esc(n.title)}</H3>\n    <DL><p>\n`;n.children.forEach(c=>o+=p(c));o+=`    </DL><p>\n`;} return o; };
-  if(tree[0].children) tree[0].children.forEach(c => h+=p(c));
-  if(rl.length) { h+=`    <DT><H3>Reading List</H3>\n    <DL><p>\n`; rl.forEach(i=>h+=`        <DT><A HREF="${esc(i.url)}">${esc(i.title)}</A>\n`); h+=`    </DL><p>\n`; }
-  h+=`</DL><p>`;
-  return URL.createObjectURL(new Blob([h],{type:'text/html'}));
+  
+  const proc = n => {
+    let o = "";
+    if (n.url) o += `    <DT><A HREF="${esc(n.url)}">${esc(n.title)}</A>\n`;
+    else if (n.children) {
+      o += `    <DT><H3>${esc(n.title)}</H3>\n    <DL><p>\n`;
+      n.children.forEach(c => o += proc(c));
+      o += `    </DL><p>\n`;
+    }
+    return o;
+  };
+  
+  if(tree[0].children) tree[0].children.forEach(c => html += proc(c));
+
+  // リーディングリストをフォルダとして追加
+  if (rl.length > 0) {
+    html += `    <DT><H3>Reading List</H3>\n    <DL><p>\n`;
+    rl.forEach(i => html += `        <DT><A HREF="${esc(i.url)}">${esc(i.title)}</A>\n`);
+    html += `    </DL><p>\n`;
+  }
+  html += `</DL><p>`;
+  
+  return URL.createObjectURL(new Blob([html], { type: 'text/html' }));
 }
+
+// --- 履歴JSON作成 ---
 async function createHistoryJsonUrl() {
   const items = await chrome.history.search({text:'', startTime:0, maxResults:100000});
-  const clean = items.map(i=>({title:i.title, url:i.url, visitCount:i.visitCount, lastVisit:new Date(i.lastVisitTime).toLocaleString()}));
-  const yt = clean.filter(i=>i.url.includes("youtube.com/watch"));
-  return URL.createObjectURL(new Blob([JSON.stringify({exportedAt:new Date().toLocaleString(), youtube:yt, full:clean},null,2)],{type:'application/json'}));
-}
-async function deleteAllBookmarks() {
-  return new Promise(r => chrome.bookmarks.getTree(t => {
-    const p=[]; t[0].children.forEach(f=>{if(f.children)f.children.forEach(n=>p.push(new Promise(res=>chrome.bookmarks.removeTree(n.id,res))))});
-    Promise.all(p).then(r);
+  const clean = items.map(i => ({
+    title: i.title, url: i.url, visitCount: i.visitCount,
+    lastVisit: new Date(i.lastVisitTime).toLocaleString()
   }));
+  const yt = clean.filter(i => i.url.includes("youtube.com/watch"));
+  return URL.createObjectURL(new Blob([JSON.stringify({
+    exportedAt: new Date().toLocaleString(),
+    youtubeHistory: yt,
+    fullHistory: clean
+  }, null, 2)], { type: 'application/json' }));
 }
+
+// --- 全削除処理 (Bookmarks & ReadingList) ---
+async function deleteAllBrowsingData() {
+  // 1. ブックマーク全削除
+  await new Promise(resolve => {
+    chrome.bookmarks.getTree(tree => {
+      const p = [];
+      tree[0].children.forEach(rootChild => {
+        if(rootChild.children) {
+          rootChild.children.forEach(node => {
+            p.push(new Promise(r => chrome.bookmarks.removeTree(node.id, r)));
+          });
+        }
+      });
+      Promise.all(p).then(resolve);
+    });
+  });
+
+  // 2. リーディングリスト全削除
+  if (chrome.readingList) {
+    const items = await chrome.readingList.query({});
+    for (const item of items) {
+      await chrome.readingList.remove({ url: item.url });
+    }
+  }
+}
+
+// --- ダウンロードヘルパー ---
 function downloadFileAndWait(url, name) {
   return new Promise((resolve, reject) => {
     const ts = new Date().toISOString().slice(0,10).replace(/-/g,'');
-    chrome.downloads.download({url:url, filename:name.replace('.',`_${ts}.`), saveAs:true}, id => {
-      if(!id) return reject(new Error("キャンセル"));
-      const c = d => { if(d.id===id&&d.state){ if(d.state.current==='complete'){chrome.downloads.onChanged.removeListener(c);resolve();} else if(d.state.current==='interrupted'){chrome.downloads.onChanged.removeListener(c);reject(new Error("失敗"));}}};
+    chrome.downloads.download({url: url, filename: name.replace('.', `_${ts}.`), saveAs: true}, id => {
+      if(!id) return reject(new Error("保存がキャンセルされました"));
+      const c = d => {
+        if (d.id === id && d.state) {
+          if (d.state.current === 'complete') { chrome.downloads.onChanged.removeListener(c); resolve(); }
+          else if (d.state.current === 'interrupted') { chrome.downloads.onChanged.removeListener(c); reject(new Error("保存失敗")); }
+        }
+      };
       chrome.downloads.onChanged.addListener(c);
     });
   });
 }
 
-// =========================================================================
-//  YouTube 管理機能 (修正版: removelike API使用)
-// =========================================================================
-const btnYt = document.getElementById('btn-yt-process');
 
+// =========================================================================
+//  Part 2: YouTube 管理機能 (バックアップ・削除・復元)
+// =========================================================================
+
+// --- A. 退避 & 削除ボタン ---
+const btnYt = document.getElementById('btn-yt-process');
 btnYt.addEventListener('click', async () => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab.url.includes("youtube.com/playlist?list=LL")) {
-    setStatus("⚠️ エラー: YouTubeの「高く評価した動画」ページ(list=LL)を開いてください。");
-    return;
-  }
-
+  if (!tab.url.includes("youtube.com/playlist?list=LL")) { setStatus("YouTubeの「高く評価した動画」を開いてください"); return; }
+  
   const isJson = document.getElementById('chk-json').checked;
   const isDelete = document.getElementById('chk-delete').checked;
-
-  if (isDelete) {
-    const doubleCheck = confirm("【危険: 遡りモード】\nバックアップ完了後に、これらの動画の高評価を取り消します。\n(高評価リストから消え、代わりに古い動画が表示されるようになります)\n\n本当に実行しますか？");
-    if (!doubleCheck) return;
+  
+  if(isDelete) {
+    const c = confirm("【危険: 遡りモード】\nバックアップ完了後に高評価を取り消します。\n(高評価リストから消え、代わりに過去の動画が表示されるようになります)\n\n本当に実行しますか？");
+    if(!c) return;
   }
 
-  setStatus("📺 YouTubeスクリプトを実行中...");
+  setStatus("📺 YouTubeスクリプト実行中...");
   
   chrome.scripting.executeScript({
     target: { tabId: tab.id },
     func: runYoutubeCloner,
     args: [{ isJson, isDelete }],
-    world: 'MAIN'
+    world: 'MAIN' 
   }, () => {
     if (chrome.runtime.lastError) setStatus("エラー: " + chrome.runtime.lastError.message);
   });
 });
 
-// --- ブラウザ内(MAIN world)で動くスクリプト ---
+
+// --- B. 復元 (再・高評価) ボタン ---
+const btnRestore = document.getElementById('btn-yt-restore');
+const fileInput = document.getElementById('file-restore');
+
+btnRestore.addEventListener('click', async () => {
+  const file = fileInput.files[0];
+  if (!file) { setStatus("ファイルを選択してください"); return; }
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab.url.includes("youtube.com/")) { setStatus("YouTubeを開いてください"); return; }
+
+  try {
+    setStatus("📂 読み込み中...");
+    const text = await file.text();
+    const data = JSON.parse(text);
+    // JSON形式の揺らぎを吸収
+    let videos = data.videos || data.youtubeHistory || [];
+    
+    if(videos.length === 0) throw new Error("動画が見つかりません");
+    
+    if(!confirm(`${videos.length}件の動画を再評価しますか？`)) return;
+
+    // IDリスト抽出
+    const ids = videos.map(v => v.id || (v.url ? new URL(v.url).searchParams.get('v') : null)).filter(i=>i);
+    
+    setStatus("📺 再評価プロセス開始...");
+    chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: runYoutubeReliker,
+      args: [ids],
+      world: 'MAIN'
+    });
+  } catch(e){ setStatus("エラー: "+e.message); }
+});
+
+
+// =========================================================================
+//  Part 3: Content Scripts (ブラウザ内で動作する関数群)
+// =========================================================================
+
+// --- 1. バックアップ & 削除用スクリプト ---
 async function runYoutubeCloner(settings) {
   const log = (msg) => {
     console.log(`[YT Manager] ${msg}`);
@@ -154,8 +268,7 @@ async function runYoutubeCloner(settings) {
     const videoMap = new Map();
     let noChange = 0;
     
-    // スクロールループ (多めに設定)
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 150; i++) {
       window.scrollTo(0, document.documentElement.scrollHeight);
       await new Promise(r => setTimeout(r, 1500));
       const links = document.querySelectorAll('a#video-title');
@@ -239,10 +352,8 @@ async function runYoutubeCloner(settings) {
       }
       log("🗑️ 【高評価取り消し開始】...");
       
-      // 1件ずつ処理する必要がある (バッチAPIがない可能性が高いため)
       let delCount = 0;
       for (const video of videos) {
-        // 高評価取り消しAPI
         const delRes = await fetch(`https://www.youtube.com/youtubei/v1/like/removelike?key=${apiKey}`, {
           method: "POST",
           headers: headers,
@@ -258,13 +369,8 @@ async function runYoutubeCloner(settings) {
           log(`⚠️ 失敗(${video.id}): Status ${delRes.status}`);
         }
 
-        // 進捗ログを間引いて表示
-        if (delCount % 10 === 0) {
-          log(`削除済み: ${delCount} / ${videos.length}`);
-        }
-        
-        // 短いウェイト (API制限対策)
-        await new Promise(r => setTimeout(r, 150)); 
+        if (delCount % 10 === 0) log(`削除済み: ${delCount} / ${videos.length}`);
+        await new Promise(r => setTimeout(r, 150)); // ウェイト
       }
       
       log("🎉 削除完了。ページをリロードしてください。");
@@ -277,64 +383,9 @@ async function runYoutubeCloner(settings) {
     log(`❌ Error: ${e.message}`);
     console.error(e);
   }
-const btnRestore = document.getElementById('btn-yt-restore');
-const fileInput = document.getElementById('file-restore');
+}
 
-btnRestore.addEventListener('click', async () => {
-  const file = fileInput.files[0];
-  if (!file) { setStatus("⚠️ JSONファイルを選択してください。"); return; }
-
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab.url.includes("youtube.com/")) { setStatus("⚠️ YouTubeのページを開いた状態で実行してください。"); return; }
-
-  try {
-    setStatus("📂 ファイル読み込み中...");
-    const text = await file.text();
-    const data = JSON.parse(text);
-    
-    // JSONの形式チェック (videos配列があるか)
-    let videos = [];
-    if (Array.isArray(data.videos)) {
-      videos = data.videos; // このツールの形式
-    } else if (Array.isArray(data.youtubeHistory)) {
-      videos = data.youtubeHistory; // 履歴エクスポートの形式
-    } else {
-      throw new Error("対応していないJSON形式です。\n'videos' または 'youtubeHistory' 配列が見つかりません。");
-    }
-
-    if (videos.length === 0) throw new Error("動画リストが空です。");
-
-    const confirmMsg = `ファイルから ${videos.length} 件の動画が見つかりました。\n\nこれら全てに「高評価」を押し直しますか？\n(※件数が多いと時間がかかります)`;
-    if (!confirm(confirmMsg)) return;
-
-    setStatus(`📺 ${videos.length}件の再評価プロセスを開始します...`);
-
-    // 動画IDリストだけを抽出して渡す
-    const videoIds = videos.map(v => {
-      // URLからIDを抜くか、オブジェクトのIDプロパティを使う
-      if (v.id) return v.id;
-      if (v.url) {
-        try { return new URL(v.url).searchParams.get('v'); } catch(e){ return null; }
-      }
-      return null;
-    }).filter(id => id !== null);
-
-    chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: runYoutubeReliker,
-      args: [videoIds],
-      world: 'MAIN'
-    }, () => {
-      if (chrome.runtime.lastError) setStatus("エラー: " + chrome.runtime.lastError.message);
-    });
-
-  } catch (e) {
-    setStatus("❌ エラー: " + e.message);
-    console.error(e);
-  }
-});
-
-// --- YouTubeページ内で動く「再・高評価」スクリプト ---
+// --- 2. 復元 (再評価) 用スクリプト ---
 async function runYoutubeReliker(videoIds) {
   const log = (msg) => {
     console.log(`[Reliker] ${msg}`);
@@ -358,7 +409,6 @@ async function runYoutubeReliker(videoIds) {
     const context = cfg.INNERTUBE_CONTEXT;
     const authUser = cfg.SESSION_INDEX || '0';
 
-    // 認証ヘッダー作成
     const getHeaders = async () => {
       const match = document.cookie.match(/SAPISID=([^;]+)/);
       if (!match) throw new Error("SAPISID Cookieが見つかりません。");
@@ -379,11 +429,8 @@ async function runYoutubeReliker(videoIds) {
     let successCount = 0;
     let failCount = 0;
 
-    // ループ処理
     for (let i = 0; i < videoIds.length; i++) {
       const vid = videoIds[i];
-      
-      // like API を叩く
       const res = await fetch(`https://www.youtube.com/youtubei/v1/like/like?key=${apiKey}`, {
         method: "POST",
         headers: headers,
@@ -395,15 +442,13 @@ async function runYoutubeReliker(videoIds) {
 
       if (res.ok) {
         successCount++;
-        // ログは少し間引く（全件出すと重いので）
         if (i % 5 === 0) log(`[${i+1}/${videoIds.length}] OK: ${vid}`);
       } else {
         failCount++;
         log(`[${i+1}/${videoIds.length}] 失敗(${res.status}): ${vid}`);
       }
-
-      // スパム判定回避のためのウェイト (重要)
-      // 削除よりもリスクが高いため、少し長めに待つ (500ms - 800ms)
+      
+      // スパム判定回避のためのウェイト (重要: 600ms)
       await new Promise(r => setTimeout(r, 600)); 
     }
 
@@ -415,5 +460,4 @@ async function runYoutubeReliker(videoIds) {
     log(`❌ Error: ${e.message}`);
     console.error(e);
   }
-}
 }

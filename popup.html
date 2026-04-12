@@ -13,6 +13,7 @@
 
     h2 { font-size: 14px; margin: 0 0 10px 0; color: #333; }
     .stat { font-size: 13px; color: #555; margin-bottom: 5px; }
+    .badge { display: inline-block; padding: 3px 6px; border-radius: 4px; background: #e9ecef; font-size: 11px; margin-right: 5px; font-weight: bold; width: 80px; text-align: center; }
     
     button.action-btn { width: 100%; padding: 12px; margin-top: 10px; cursor: pointer; border: none; border-radius: 6px; font-weight: bold; color: white; }
     button.action-btn:hover { opacity: 0.9; }
@@ -20,14 +21,12 @@
 
     #btn-browser-process { background-color: #6f42c1; }
     #btn-yt-process { background-color: #d63384; }
-    #btn-yt-restore { background-color: #28a745; margin-top: 5px; } /* 緑色 */
+    #btn-yt-restore { background-color: #28a745; margin-top: 5px; }
 
     #status { padding: 10px; font-size: 11px; color: #333; background: #fff; border-top: 1px solid #eee; white-space: pre-wrap; min-height: 40px; margin-top:15px;}
     
     .yt-options { background: #fff; padding: 10px; border-radius: 5px; border: 1px solid #ddd; margin-bottom: 15px; }
     .chk-label { display: flex; align-items: center; font-size: 12px; margin-bottom: 5px; cursor: pointer; }
-    
-    /* 復元用エリア */
     .restore-area { border-top: 2px dashed #ccc; margin-top: 20px; padding-top: 15px; }
     input[type="file"] { font-size: 11px; margin-bottom: 5px; width: 100%; }
   </style>
@@ -42,9 +41,14 @@
   <!-- ブラウザ管理 -->
   <div id="view-1" class="content active">
     <h2>データ状況</h2>
-    <div class="stat">Bookmarks: <span id="count-bm">...</span></div>
-    <div class="stat">History: <span id="count-hist">...</span></div>
+    <div class="stat"><span class="badge">Bookmarks</span> <span id="count-bm">...</span></div>
+    <div class="stat"><span class="badge">Reading List</span> <span id="count-rl">...</span></div>
+    <div class="stat"><span class="badge">History</span> <span id="count-hist">...</span></div>
+    
     <button id="btn-browser-process" class="action-btn">📦 バックアップ & 全削除</button>
+    <p style="font-size:11px; color:#666; margin-top:5px;">
+      ブックマーク、リーディングリスト、履歴を全て保存してから削除します。
+    </p>
   </div>
 
   <!-- YouTube管理 -->
@@ -58,7 +62,7 @@
 
     <div class="restore-area">
       <h2>2. JSONから高評価を復元</h2>
-      <p style="font-size:11px; color:#666;">以前保存したJSONを選択してください。</p>
+      <p style="font-size:11px; color:#666;">保存したJSONを選択してください。</p>
       <input type="file" id="file-restore" accept=".json">
       <button id="btn-yt-restore" class="action-btn">❤️ 再・高評価する</button>
     </div>
