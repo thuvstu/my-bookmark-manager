@@ -1,74 +1,600 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="UTF-8">
   <style>
-    body { width: 360px; margin: 0; font-family: sans-serif; background: #f9f9f9; }
-    
-    .tabs { display: flex; border-bottom: 1px solid #ccc; background: #fff; }
-    .tab-btn { flex: 1; padding: 12px; cursor: pointer; border: none; background: none; font-weight: bold; font-size: 13px; color: #666; }
-    .tab-btn.active { color: #007bff; border-bottom: 3px solid #007bff; background: #fff; }
-    .content { padding: 15px; display: none; }
-    .content.active { display: block; }
+    :root {
+      --blue: #0d6efd;
+      --red: #dc3545;
+      --green: #198754;
+      --purple: #6f42c1;
+      --teal: #0d9488;
+      --orange: #f59e0b;
+      --bg: #f0f2f5;
+      --card: #fff;
+      --text: #333;
+      --text-sub: #777;
+      --border: #ddd;
+    }
 
-    h2 { font-size: 14px; margin: 0 0 10px 0; color: #333; }
-    .stat { font-size: 13px; color: #555; margin-bottom: 5px; }
-    .badge { display: inline-block; padding: 3px 6px; border-radius: 4px; background: #e9ecef; font-size: 11px; margin-right: 5px; font-weight: bold; width: 80px; text-align: center; }
-    
-    button.action-btn { width: 100%; padding: 12px; margin-top: 10px; cursor: pointer; border: none; border-radius: 6px; font-weight: bold; color: white; }
-    button.action-btn:hover { opacity: 0.9; }
-    button.action-btn:disabled { background-color: #ccc !important; }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1a1a1a;
+        --card: #2a2a2a;
+        --text: #e0e0e0;
+        --text-sub: #999;
+        --border: #444;
+      }
+    }
 
-    #btn-browser-process { background-color: #6f42c1; }
-    #btn-yt-process { background-color: #d63384; }
-    #btn-yt-restore { background-color: #28a745; margin-top: 5px; }
+    * {
+      box-sizing: border-box;
+    }
 
-    #status { padding: 10px; font-size: 11px; color: #333; background: #fff; border-top: 1px solid #eee; white-space: pre-wrap; min-height: 40px; margin-top:15px;}
-    
-    .yt-options { background: #fff; padding: 10px; border-radius: 5px; border: 1px solid #ddd; margin-bottom: 15px; }
-    .chk-label { display: flex; align-items: center; font-size: 12px; margin-bottom: 5px; cursor: pointer; }
-    .restore-area { border-top: 2px dashed #ccc; margin-top: 20px; padding-top: 15px; }
-    input[type="file"] { font-size: 11px; margin-bottom: 5px; width: 100%; }
+    body {
+      width: 400px;
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .tabs {
+      display: flex;
+      background: var(--card);
+      border-bottom: 2px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 10px 3px;
+      cursor: pointer;
+      border: none;
+      background: none;
+      font-weight: bold;
+      font-size: 11px;
+      color: var(--text-sub);
+      transition: 0.2s;
+      line-height: 1.3;
+    }
+
+    .tab-btn:hover {
+      background: rgba(128, 128, 128, 0.1);
+      color: var(--text);
+    }
+
+    .tab-btn.active {
+      color: var(--blue);
+      border-bottom: 3px solid var(--blue);
+      background: var(--card);
+    }
+
+    .content {
+      padding: 12px;
+      display: none;
+      max-height: 520px;
+      overflow-y: auto;
+    }
+
+    .content.active {
+      display: block;
+    }
+
+    h2 {
+      font-size: 13px;
+      margin: 0 0 8px 0;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 5px;
+      color: var(--text);
+    }
+
+    .panel {
+      background: var(--card);
+      padding: 10px;
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      margin-bottom: 10px;
+    }
+
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      padding: 4px 0;
+      border-bottom: 1px dashed var(--border);
+    }
+
+    .stat-row:last-child {
+      border-bottom: none;
+    }
+
+    .stat-label {
+      font-weight: bold;
+      color: var(--text-sub);
+    }
+
+    .stat-value {
+      font-family: monospace;
+      color: var(--blue);
+      font-weight: bold;
+    }
+
+    .chk-group {
+      margin: 6px 0;
+    }
+
+    .chk-label {
+      display: flex;
+      align-items: center;
+      font-size: 12px;
+      margin-bottom: 5px;
+      cursor: pointer;
+      line-height: 1.4;
+    }
+
+    .chk-label input {
+      margin-right: 8px;
+      width: 14px;
+      height: 14px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .sub-chk {
+      margin-left: 22px;
+      color: var(--blue);
+      font-weight: bold;
+    }
+
+    button.action-btn {
+      width: 100%;
+      padding: 10px;
+      cursor: pointer;
+      border: none;
+      border-radius: 6px;
+      font-weight: bold;
+      font-size: 13px;
+      color: white;
+      transition: 0.2s;
+      margin-top: 4px;
+    }
+
+    button.action-btn:hover:not(:disabled) {
+      opacity: 0.85;
+      transform: translateY(-1px);
+    }
+
+    button.action-btn:disabled {
+      background-color: #bbb !important;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-blue {
+      background-color: var(--blue);
+    }
+
+    .btn-red {
+      background-color: var(--red);
+    }
+
+    .btn-green {
+      background-color: var(--green);
+    }
+
+    .btn-orange {
+      background-color: var(--orange);
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    .btn-row .action-btn {
+      margin-top: 0;
+    }
+
+    #status {
+      padding: 10px 12px;
+      font-size: 11px;
+      color: var(--text);
+      background: var(--card);
+      border-top: 1px solid var(--border);
+      white-space: pre-wrap;
+      min-height: 38px;
+      max-height: 100px;
+      overflow-y: auto;
+      font-family: monospace;
+      position: sticky;
+      bottom: 0;
+    }
+
+    .danger-text {
+      color: var(--red);
+      font-weight: bold;
+    }
+
+    .note {
+      font-size: 11px;
+      color: var(--text-sub);
+      margin-top: 4px;
+      line-height: 1.4;
+    }
+
+    .warn-note {
+      font-size: 11px;
+      color: #b45309;
+      background: #fef9c3;
+      border-left: 3px solid #f59e0b;
+      padding: 5px 8px;
+      border-radius: 2px;
+      margin-top: 6px;
+      line-height: 1.4;
+    }
+
+    .info-note {
+      font-size: 11px;
+      color: #0369a1;
+      background: #e0f2fe;
+      border-left: 3px solid #0ea5e9;
+      padding: 5px 8px;
+      border-radius: 2px;
+      margin-top: 6px;
+      line-height: 1.4;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .warn-note {
+        color: #fbbf24;
+        background: #422006;
+      }
+
+      .info-note {
+        color: #7dd3fc;
+        background: #082f49;
+      }
+    }
+
+    .progress-container {
+      display: none;
+      margin: 8px 0;
+    }
+
+    .progress-container.visible {
+      display: block;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background: rgba(128, 128, 128, 0.2);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--blue), var(--teal));
+      border-radius: 4px;
+      transition: width 0.3s ease;
+      width: 0%;
+    }
+
+    .progress-text {
+      font-size: 10px;
+      color: var(--text-sub);
+      margin-top: 3px;
+      text-align: center;
+    }
+
+    .settings-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      padding: 3px 0;
+    }
+
+    .settings-row label {
+      color: var(--text-sub);
+    }
+
+    .settings-row input[type="number"],
+    .settings-row select {
+      width: 80px;
+      padding: 3px 5px;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      font-size: 11px;
+      background: var(--card);
+      color: var(--text);
+    }
+
+    .settings-row input[type="number"] {
+      text-align: center;
+    }
+
+    .accordion-header {
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 5px 0;
+      font-weight: bold;
+      font-size: 12px;
+    }
+
+    .accordion-content {
+      display: none;
+      padding-top: 5px;
+    }
+
+    .accordion-content.open {
+      display: block;
+    }
+
+    .accordion-icon {
+      transition: transform 0.2s;
+    }
+
+    .accordion-icon.open {
+      transform: rotate(90deg);
+    }
+
+    .control-btns {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+      display: none;
+    }
+
+    .control-btns.visible {
+      display: flex;
+    }
+
+    .mini-btn {
+      flex: 1;
+      padding: 6px 8px;
+      border: none;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: bold;
+      cursor: pointer;
+      color: white;
+    }
+
+    .stat-card {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 6px;
+    }
+
+    .stat-item {
+      background: rgba(13, 110, 253, 0.08);
+      padding: 8px;
+      border-radius: 4px;
+      text-align: center;
+    }
+
+    .stat-num {
+      font-size: 18px;
+      font-weight: bold;
+      color: var(--blue);
+      display: block;
+    }
+
+    .stat-desc {
+      font-size: 10px;
+      color: var(--text-sub);
+    }
+
+    textarea {
+      width: 100%;
+      box-sizing: border-box;
+      background: var(--card);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 6px;
+      font-size: 11px;
+      resize: vertical;
+    }
   </style>
 </head>
+
 <body>
-
   <div class="tabs">
-    <button id="tab-1" class="tab-btn active">🌐 ブラウザ</button>
-    <button id="tab-2" class="tab-btn">📺 YouTube</button>
+    <button id="tab-1" class="tab-btn active">🌐<br>掃除</button>
+    <button id="tab-2" class="tab-btn">📺<br>YT退避</button>
+    <button id="tab-3" class="tab-btn">❤️<br>YT復元</button>
+    <button id="tab-4" class="tab-btn">📊<br>統計</button>
+    <button id="tab-5" class="tab-btn">⚙️<br>設定</button>
   </div>
 
-  <!-- ブラウザ管理 -->
+  <!-- タブ1: ブラウザ管理 -->
   <div id="view-1" class="content active">
-    <h2>データ状況</h2>
-    <div class="stat"><span class="badge">Bookmarks</span> <span id="count-bm">...</span></div>
-    <div class="stat"><span class="badge">Reading List</span> <span id="count-rl">...</span></div>
-    <div class="stat"><span class="badge">History</span> <span id="count-hist">...</span></div>
-    
-    <button id="btn-browser-process" class="action-btn">📦 バックアップ & 全削除</button>
-    <p style="font-size:11px; color:#666; margin-top:5px;">
-      ブックマーク、リーディングリスト、履歴を全て保存してから削除します。
-    </p>
+    <div class="panel">
+      <h2>現在のデータ件数</h2>
+      <div class="stat-row"><span class="stat-label">🔖 ブックマーク</span><span class="stat-value" id="c-bm">…</span></div>
+      <div class="stat-row"><span class="stat-label">📖 リーディングリスト</span><span class="stat-value" id="c-rl">…</span>
+      </div>
+      <div class="stat-row"><span class="stat-label">🕒 履歴 (概算)</span><span class="stat-value" id="c-hs">…</span></div>
+      <div class="stat-row"><span class="stat-label">📅 前回バックアップ</span><span class="stat-value"
+          id="last-backup">—</span></div>
+    </div>
+    <div class="panel">
+      <h2>対象を選択 (退避 &amp; 削除)</h2>
+      <div class="chk-group">
+        <label class="chk-label"><input type="checkbox" id="chk-bm" checked> ブックマークを処理</label>
+        <label class="chk-label"><input type="checkbox" id="chk-rl" checked> リーディングリストを処理</label>
+        <label class="chk-label"><input type="checkbox" id="chk-hs" checked> 履歴を処理 (JSON)</label>
+        <label class="chk-label sub-chk"><input type="checkbox" id="chk-lw-hs" checked> ↳ 履歴をLinkwarden(HTML)</label>
+        <label class="chk-label sub-chk"><input type="checkbox" id="chk-csv-hs"> ↳ 履歴をCSVでも保存</label>
+      </div>
+      <div class="accordion-header" id="acc-adv1"><span>⚙️ 詳細設定</span><span class="accordion-icon"
+          id="acc-adv1-icon">▶</span></div>
+      <div class="accordion-content" id="acc-adv1-content">
+        <div class="settings-row"><label>保存時に確認ダイアログ:</label><input type="checkbox" id="chk-save-as" checked></div>
+        <div class="settings-row"><label>削除前にドライラン:</label><input type="checkbox" id="chk-dry-run"></div>
+        <div class="settings-row"><label>差分バックアップ:</label><input type="checkbox" id="chk-diff"></div>
+        <div class="settings-row"><label>履歴取得件数:</label>
+          <select id="hs-limit">
+            <option value="10000">10,000</option>
+            <option value="50000">50,000</option>
+            <option value="100000" selected>100,000</option>
+            <option value="500000">500,000</option>
+          </select>
+        </div>
+      </div>
+      <div class="warn-note">⚠️ Brave/同期有効環境ではリーディングリストの削除が失敗する場合があります。</div>
+      <div class="progress-container" id="prog-browser">
+        <div class="progress-bar">
+          <div class="progress-fill" id="prog-browser-fill"></div>
+        </div>
+        <div class="progress-text" id="prog-browser-text"></div>
+      </div>
+      <button id="btn-browser-run" class="action-btn btn-blue">💾 選択したデータを退避して削除</button>
+      <div class="btn-row"><button id="btn-browser-backup-only" class="action-btn btn-green">📥 バックアップのみ</button></div>
+    </div>
   </div>
 
-  <!-- YouTube管理 -->
+  <!-- タブ2: YouTube バックアップ -->
   <div id="view-2" class="content">
-    <h2>1. 退避と削除 (バックアップ)</h2>
-    <div class="yt-options">
-      <label class="chk-label"><input type="checkbox" id="chk-json" checked> JSON保存</label>
-      <label class="chk-label"><input type="checkbox" id="chk-delete"> <span style="color:#d93025;font-weight:bold;">完了後にリストから削除</span></label>
+    <div class="panel">
+      <h2>1. 高評価リストのバックアップ</h2>
+      <p class="note">YouTubeの「高く評価した動画」を開いて実行。<br>URL: youtube.com/playlist?list=LL</p>
+      <div class="chk-group">
+        <label class="chk-label"><input type="checkbox" id="yt-chk-json" checked> 📄 JSONをダウンロード</label>
+        <label class="chk-label sub-chk"><input type="checkbox" id="yt-chk-lw" checked> ↳ Linkwarden(HTML)</label>
+        <label class="chk-label sub-chk"><input type="checkbox" id="yt-chk-csv"> ↳ CSV形式でも保存</label>
+        <label class="chk-label"><input type="checkbox" id="yt-chk-pl" checked> 📁 非公開プレイリストにコピー</label>
+      </div>
+      <div class="accordion-header" id="acc-adv2"><span>⚙️ 詳細設定</span><span class="accordion-icon"
+          id="acc-adv2-icon">▶</span></div>
+      <div class="accordion-content" id="acc-adv2-content">
+        <div class="settings-row"><label>APIリクエスト間隔 (ms):</label><input type="number" id="yt-delay" value="400"
+            min="100" max="2000" step="50"></div>
+        <div class="settings-row"><label>バッチサイズ:</label><input type="number" id="yt-batch" value="50" min="1" max="200"
+            step="10"></div>
+        <div class="settings-row"><label>並列数:</label><input type="number" id="yt-parallel" value="1" min="1" max="5">
+        </div>
+        <div class="settings-row"><label>スクロール最大:</label><input type="number" id="yt-scroll-max" value="300" min="10"
+            max="1000"></div>
+      </div>
     </div>
-    <button id="btn-yt-process" class="action-btn">🚀 実行 (退避)</button>
-
-    <div class="restore-area">
-      <h2>2. JSONから高評価を復元</h2>
-      <p style="font-size:11px; color:#666;">保存したJSONを選択してください。</p>
-      <input type="file" id="file-restore" accept=".json">
-      <button id="btn-yt-restore" class="action-btn">❤️ 再・高評価する</button>
+    <div class="panel" style="border: 2px solid #ffcccc;">
+      <h2>2. 【危険】過去動画の遡り</h2>
+      <div class="chk-group"><label class="chk-label"><input type="checkbox" id="yt-chk-del"><span
+            class="danger-text">高評価を取り消す</span></label></div>
+      <p class="note">5000件制限で隠れた古い動画が出現します。</p>
+    </div>
+    <button id="btn-yt-run" class="action-btn btn-red">🚀 実行</button>
+    <div class="control-btns" id="yt-controls">
+      <button class="mini-btn btn-orange" id="btn-yt-pause">⏸ 一時停止</button>
+      <button class="mini-btn btn-red" id="btn-yt-cancel">⏹ 中止</button>
     </div>
   </div>
 
-  <div id="status">準備完了</div>
+  <!-- タブ3: YouTube 再評価 -->
+  <div id="view-3" class="content">
+    <div class="panel">
+      <h2>JSONから「高評価」を復元</h2>
+      <p class="note">保存したJSONを読み込み、動画に再Likeします。</p>
+      <input type="file" id="yt-file-restore" accept=".json" style="margin: 10px 0; width: 100%; font-size: 12px;">
+      <div class="chk-group">
+        <label class="chk-label"><input type="checkbox" id="yt-restore-dedup" checked> 🔄 重複を自動除去</label>
+        <label class="chk-label"><input type="checkbox" id="yt-restore-resume" checked> 🔁 前回失敗分から再開</label>
+      </div>
+      <div class="accordion-header" id="acc-adv3"><span>⚙️ 詳細設定</span><span class="accordion-icon"
+          id="acc-adv3-icon">▶</span></div>
+      <div class="accordion-content" id="acc-adv3-content">
+        <div class="settings-row"><label>リクエスト間隔 (ms):</label><input type="number" id="yt-restore-delay" value="400"
+            min="100" max="2000" step="50"></div>
+        <div class="settings-row"><label>最大リトライ回数:</label><input type="number" id="yt-retry" value="3" min="0" max="10">
+        </div>
+      </div>
+      <div id="failed-info" class="info-note" style="display:none;"></div>
+      <button id="btn-yt-restore" class="action-btn btn-green">❤️ 再評価する</button>
+      <button id="btn-retry-failed" class="action-btn btn-orange" style="display:none;">🔄 失敗分のみ再試行</button>
+    </div>
+  </div>
+
+  <!-- タブ4: 統計 -->
+  <div id="view-4" class="content">
+    <div class="panel">
+      <h2>📊 処理統計</h2>
+      <div class="stat-card">
+        <div class="stat-item"><span class="stat-num" id="stat-bm-total">0</span><span class="stat-desc">BM退避</span>
+        </div>
+        <div class="stat-item"><span class="stat-num" id="stat-hs-total">0</span><span class="stat-desc">履歴退避</span>
+        </div>
+        <div class="stat-item"><span class="stat-num" id="stat-yt-backup">0</span><span class="stat-desc">YT退避</span>
+        </div>
+        <div class="stat-item"><span class="stat-num" id="stat-yt-restore">0</span><span class="stat-desc">YT復元</span>
+        </div>
+        <div class="stat-item"><span class="stat-num" id="stat-url-cleaned">0</span><span class="stat-desc">URL浄化</span>
+        </div>
+        <div class="stat-item"><span class="stat-num" id="stat-runs">0</span><span class="stat-desc">総実行</span></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>🕘 実行履歴</h2>
+      <div id="history-list" style="font-size:11px;max-height:200px;overflow-y:auto;">
+        <p class="note">なし</p>
+      </div>
+    </div>
+    <button id="btn-stats-reset" class="action-btn btn-red">🗑️ 統計リセット</button>
+  </div>
+
+  <!-- タブ5: 設定 -->
+  <div id="view-5" class="content">
+    <div class="panel">
+      <h2>🔔 通知</h2>
+      <div class="chk-group">
+        <label class="chk-label"><input type="checkbox" id="cfg-notify" checked> 完了通知</label>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>⏰ スケジュール</h2>
+      <div class="chk-group"><label class="chk-label"><input type="checkbox" id="cfg-schedule"> 定期バックアップ</label></div>
+      <div class="settings-row"><label>頻度:</label><select id="cfg-schedule-freq">
+          <option value="1440">毎日</option>
+          <option value="10080" selected>毎週</option>
+          <option value="43200">毎月</option>
+        </select></div>
+      <div class="info-note">ブラウザが開いている時のみ動作</div>
+    </div>
+    <div class="panel">
+      <h2>🧹 URLクリーナー</h2>
+      <div class="stat-row"><span class="stat-label">今日</span><span class="stat-value" id="url-today">0</span></div>
+      <div class="chk-group">
+        <label class="chk-label"><input type="checkbox" id="cfg-url-enabled" checked> 有効化</label>
+        <label class="chk-label"><input type="checkbox" id="cfg-url-log"> ログ表示</label>
+      </div>
+      <div class="settings-row"><label>除外ドメイン(改行区切り):</label></div>
+      <textarea id="cfg-url-exclude" rows="3" placeholder="example.com"></textarea>
+    </div>
+    <div class="panel">
+      <h2>💾 データ管理</h2>
+      <div class="btn-row">
+        <button id="btn-export-settings" class="action-btn btn-blue">📤 設定エクスポート</button>
+        <button id="btn-import-settings" class="action-btn btn-green">📥 設定インポート</button>
+      </div>
+      <input type="file" id="import-settings-file" accept=".json" style="display:none;">
+    </div>
+  </div>
+
+  <div id="status">準備完了。操作を選択してください。</div>
   <script src="popup.js"></script>
 </body>
+
 </html>

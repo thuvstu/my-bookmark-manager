@@ -1,20 +1,35 @@
 {
   "manifest_version": 3,
-  "name": "Browser & YouTube Master Tool",
-  "version": "5.0",
-  "description": "ブックマーク/履歴の完全管理とYouTube高評価のバックアップ",
+  "name": "Browser Cleaner & YT Manager Pro",
+  "version": "3.0.1",
+  "description": "ブラウザデータの一括バックアップ&削除、YouTube高評価リストの管理、URLトラッキングパラメータ除去",
   "permissions": [
     "bookmarks",
+    "history",
     "readingList",
     "downloads",
-    "history",
+    "activeTab",
     "scripting",
-    "activeTab"
-  ],
-  "host_permissions": [
-    "https://www.youtube.com/*"
+    "storage",
+    "notifications",
+    "alarms"
   ],
   "action": {
     "default_popup": "popup.html"
-  }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*/*"
+      ],
+      "js": [
+        "url-cleaner.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ]
 }
