@@ -1,14 +1,15 @@
 {
   "manifest_version": 3,
   "name": "Browser Cleaner & YT Manager Pro",
-  "version": "3.0.1",
-  "description": "ブラウザデータの一括バックアップ&削除、YouTube高評価リストの管理、URLトラッキングパラメータ除去",
+  "version": "4.0.0",
+  "description": "ブラウザ掃除・YouTube管理・タブ管理・ブックマークツール",
   "permissions": [
     "bookmarks",
     "history",
     "readingList",
     "downloads",
     "activeTab",
+    "tabs",
     "scripting",
     "storage",
     "notifications",
@@ -31,5 +32,19 @@
       "run_at": "document_start",
       "all_frames": false
     }
-  ]
+  ],
+  "commands": {
+    "quick-backup": {
+      "suggested_key": {
+        "default": "Alt+Shift+B"
+      },
+      "description": "クイックバックアップ"
+    },
+    "save-tabs": {
+      "suggested_key": {
+        "default": "Alt+Shift+T"
+      },
+      "description": "タブを保存"
+    }
+  }
 }

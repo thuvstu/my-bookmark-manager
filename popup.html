@@ -26,6 +26,16 @@
         --text-sub: #999;
         --border: #444;
       }
+
+      .warn-note {
+        color: #fbbf24;
+        background: #422006;
+      }
+
+      .info-note {
+        color: #7dd3fc;
+        background: #082f49;
+      }
     }
 
     * {
@@ -33,13 +43,14 @@
     }
 
     body {
-      width: 400px;
+      width: 420px;
       margin: 0;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: var(--bg);
       color: var(--text);
     }
 
+    /* タブ */
     .tabs {
       display: flex;
       background: var(--card);
@@ -51,12 +62,12 @@
 
     .tab-btn {
       flex: 1;
-      padding: 10px 3px;
+      padding: 8px 2px;
       cursor: pointer;
       border: none;
       background: none;
       font-weight: bold;
-      font-size: 11px;
+      font-size: 10px;
       color: var(--text-sub);
       transition: 0.2s;
       line-height: 1.3;
@@ -73,10 +84,11 @@
       background: var(--card);
     }
 
+    /* コンテンツ */
     .content {
-      padding: 12px;
+      padding: 10px;
       display: none;
-      max-height: 520px;
+      max-height: 540px;
       overflow-y: auto;
     }
 
@@ -85,27 +97,27 @@
     }
 
     h2 {
-      font-size: 13px;
-      margin: 0 0 8px 0;
+      font-size: 12px;
+      margin: 0 0 6px 0;
       border-bottom: 1px solid var(--border);
-      padding-bottom: 5px;
+      padding-bottom: 4px;
       color: var(--text);
     }
 
     .panel {
       background: var(--card);
-      padding: 10px;
+      padding: 8px 10px;
       border-radius: 6px;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-      margin-bottom: 10px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      margin-bottom: 8px;
     }
 
     .stat-row {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: 12px;
-      padding: 4px 0;
+      font-size: 11px;
+      padding: 3px 0;
       border-bottom: 1px dashed var(--border);
     }
 
@@ -124,52 +136,54 @@
       font-weight: bold;
     }
 
+    /* チェックボックス */
     .chk-group {
-      margin: 6px 0;
+      margin: 5px 0;
     }
 
     .chk-label {
       display: flex;
       align-items: center;
-      font-size: 12px;
-      margin-bottom: 5px;
+      font-size: 11px;
+      margin-bottom: 4px;
       cursor: pointer;
       line-height: 1.4;
     }
 
     .chk-label input {
-      margin-right: 8px;
-      width: 14px;
-      height: 14px;
+      margin-right: 6px;
+      width: 13px;
+      height: 13px;
       cursor: pointer;
       flex-shrink: 0;
     }
 
     .sub-chk {
-      margin-left: 22px;
+      margin-left: 20px;
       color: var(--blue);
       font-weight: bold;
     }
 
-    button.action-btn {
+    /* ボタン */
+    .action-btn {
       width: 100%;
-      padding: 10px;
+      padding: 9px;
       cursor: pointer;
       border: none;
       border-radius: 6px;
       font-weight: bold;
-      font-size: 13px;
+      font-size: 12px;
       color: white;
       transition: 0.2s;
-      margin-top: 4px;
+      margin-top: 3px;
     }
 
-    button.action-btn:hover:not(:disabled) {
+    .action-btn:hover:not(:disabled) {
       opacity: 0.85;
       transform: translateY(-1px);
     }
 
-    button.action-btn:disabled {
+    .action-btn:disabled {
       background-color: #bbb !important;
       cursor: not-allowed;
       transform: none;
@@ -191,25 +205,45 @@
       background-color: var(--orange);
     }
 
+    .btn-purple {
+      background-color: var(--purple);
+    }
+
+    .btn-teal {
+      background-color: var(--teal);
+    }
+
     .btn-row {
       display: flex;
-      gap: 6px;
-      margin-top: 4px;
+      gap: 4px;
+      margin-top: 3px;
     }
 
     .btn-row .action-btn {
       margin-top: 0;
     }
 
+    .mini-btn {
+      flex: 1;
+      padding: 5px 6px;
+      border: none;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: bold;
+      cursor: pointer;
+      color: white;
+    }
+
+    /* ステータス */
     #status {
-      padding: 10px 12px;
-      font-size: 11px;
+      padding: 8px 10px;
+      font-size: 10px;
       color: var(--text);
       background: var(--card);
       border-top: 1px solid var(--border);
       white-space: pre-wrap;
-      min-height: 38px;
-      max-height: 100px;
+      min-height: 32px;
+      max-height: 80px;
       overflow-y: auto;
       font-family: monospace;
       position: sticky;
@@ -222,49 +256,38 @@
     }
 
     .note {
-      font-size: 11px;
+      font-size: 10px;
       color: var(--text-sub);
-      margin-top: 4px;
-      line-height: 1.4;
+      margin-top: 3px;
+      line-height: 1.3;
     }
 
     .warn-note {
-      font-size: 11px;
+      font-size: 10px;
       color: #b45309;
       background: #fef9c3;
       border-left: 3px solid #f59e0b;
-      padding: 5px 8px;
+      padding: 4px 6px;
       border-radius: 2px;
-      margin-top: 6px;
-      line-height: 1.4;
+      margin-top: 5px;
+      line-height: 1.3;
     }
 
     .info-note {
-      font-size: 11px;
+      font-size: 10px;
       color: #0369a1;
       background: #e0f2fe;
       border-left: 3px solid #0ea5e9;
-      padding: 5px 8px;
+      padding: 4px 6px;
       border-radius: 2px;
-      margin-top: 6px;
-      line-height: 1.4;
+      margin-top: 5px;
+      line-height: 1.3;
     }
 
-    @media (prefers-color-scheme: dark) {
-      .warn-note {
-        color: #fbbf24;
-        background: #422006;
-      }
-
-      .info-note {
-        color: #7dd3fc;
-        background: #082f49;
-      }
-    }
-
+    /* プログレス */
     .progress-container {
       display: none;
-      margin: 8px 0;
+      margin: 6px 0;
     }
 
     .progress-container.visible {
@@ -273,33 +296,34 @@
 
     .progress-bar {
       width: 100%;
-      height: 8px;
+      height: 6px;
       background: rgba(128, 128, 128, 0.2);
-      border-radius: 4px;
+      border-radius: 3px;
       overflow: hidden;
     }
 
     .progress-fill {
       height: 100%;
       background: linear-gradient(90deg, var(--blue), var(--teal));
-      border-radius: 4px;
-      transition: width 0.3s ease;
+      border-radius: 3px;
+      transition: width 0.3s;
       width: 0%;
     }
 
     .progress-text {
-      font-size: 10px;
+      font-size: 9px;
       color: var(--text-sub);
-      margin-top: 3px;
+      margin-top: 2px;
       text-align: center;
     }
 
+    /* 設定行 */
     .settings-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
       font-size: 11px;
-      padding: 3px 0;
+      padding: 2px 0;
     }
 
     .settings-row label {
@@ -308,33 +332,31 @@
 
     .settings-row input[type="number"],
     .settings-row select {
-      width: 80px;
-      padding: 3px 5px;
+      width: 70px;
+      padding: 2px 4px;
       border: 1px solid var(--border);
       border-radius: 3px;
       font-size: 11px;
       background: var(--card);
       color: var(--text);
-    }
-
-    .settings-row input[type="number"] {
       text-align: center;
     }
 
+    /* アコーディオン */
     .accordion-header {
       cursor: pointer;
       user-select: none;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 5px 0;
+      padding: 4px 0;
       font-weight: bold;
-      font-size: 12px;
+      font-size: 11px;
     }
 
     .accordion-content {
       display: none;
-      padding-top: 5px;
+      padding-top: 4px;
     }
 
     .accordion-content.open {
@@ -343,58 +365,109 @@
 
     .accordion-icon {
       transition: transform 0.2s;
+      font-size: 10px;
     }
 
     .accordion-icon.open {
       transform: rotate(90deg);
     }
 
-    .control-btns {
+    /* タブ管理 */
+    .tab-item {
       display: flex;
-      gap: 6px;
-      margin-top: 8px;
-      display: none;
-    }
-
-    .control-btns.visible {
-      display: flex;
-    }
-
-    .mini-btn {
-      flex: 1;
-      padding: 6px 8px;
-      border: none;
-      border-radius: 4px;
+      align-items: center;
+      padding: 4px 0;
+      border-bottom: 1px solid var(--border);
       font-size: 11px;
-      font-weight: bold;
+      gap: 6px;
+    }
+
+    .tab-item:last-child {
+      border-bottom: none;
+    }
+
+    .tab-item input[type="checkbox"] {
+      flex-shrink: 0;
+    }
+
+    .tab-item-title {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
       cursor: pointer;
-      color: white;
     }
 
-    .stat-card {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-      margin-top: 6px;
-    }
-
-    .stat-item {
-      background: rgba(13, 110, 253, 0.08);
-      padding: 8px;
-      border-radius: 4px;
-      text-align: center;
-    }
-
-    .stat-num {
-      font-size: 18px;
-      font-weight: bold;
+    .tab-item-title:hover {
       color: var(--blue);
-      display: block;
     }
 
-    .stat-desc {
+    .tab-item-close {
+      cursor: pointer;
+      color: #999;
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+
+    .tab-item-close:hover {
+      color: var(--red);
+    }
+
+    /* 分析 */
+    .analysis-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin: 2px 0;
+      font-size: 10px;
+    }
+
+    .analysis-bar-name {
+      width: 120px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .analysis-bar-track {
+      flex: 1;
+      height: 12px;
+      background: rgba(128, 128, 128, 0.15);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .analysis-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.3s;
+    }
+
+    .analysis-bar-count {
+      width: 40px;
+      text-align: right;
+      font-family: monospace;
       font-size: 10px;
       color: var(--text-sub);
+    }
+
+    .result-list {
+      max-height: 150px;
+      overflow-y: auto;
+      font-size: 10px;
+      margin-top: 5px;
+    }
+
+    .result-item {
+      padding: 3px 0;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .result-item:last-child {
+      border-bottom: none;
     }
 
     textarea {
@@ -404,159 +477,298 @@
       color: var(--text);
       border: 1px solid var(--border);
       border-radius: 4px;
-      padding: 6px;
-      font-size: 11px;
+      padding: 5px;
+      font-size: 10px;
       resize: vertical;
+    }
+
+    /* セッションリスト */
+    .session-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 5px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+    }
+
+    .session-item:last-child {
+      border-bottom: none;
+    }
+
+    .session-info {
+      flex: 1;
+    }
+
+    .session-name {
+      font-weight: bold;
+    }
+
+    .session-meta {
+      font-size: 10px;
+      color: var(--text-sub);
+    }
+
+    .session-actions {
+      display: flex;
+      gap: 3px;
+    }
+
+    .session-actions button {
+      padding: 3px 6px;
+      border: none;
+      border-radius: 3px;
+      font-size: 10px;
+      cursor: pointer;
+      color: white;
+    }
+
+    /* 暗号化 */
+    .enc-row {
+      display: flex;
+      gap: 4px;
+      margin-top: 4px;
+    }
+
+    .enc-row input {
+      flex: 1;
+      padding: 4px 6px;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      font-size: 11px;
+      background: var(--card);
+      color: var(--text);
     }
   </style>
 </head>
 
 <body>
   <div class="tabs">
-    <button id="tab-1" class="tab-btn active">🌐<br>掃除</button>
+    <button id="tab-1" class="tab-btn active">🌐<br>ブラウザ</button>
     <button id="tab-2" class="tab-btn">📺<br>YT退避</button>
     <button id="tab-3" class="tab-btn">❤️<br>YT復元</button>
-    <button id="tab-4" class="tab-btn">📊<br>統計</button>
-    <button id="tab-5" class="tab-btn">⚙️<br>設定</button>
+    <button id="tab-4" class="tab-btn">📑<br>タブ</button>
+    <button id="tab-5" class="tab-btn">📊<br>分析</button>
+    <button id="tab-6" class="tab-btn">⚙️<br>設定</button>
   </div>
 
-  <!-- タブ1: ブラウザ管理 -->
+  <!-- ═══════ タブ1: ブラウザ掃除 ═══════ -->
   <div id="view-1" class="content active">
     <div class="panel">
       <h2>現在のデータ件数</h2>
       <div class="stat-row"><span class="stat-label">🔖 ブックマーク</span><span class="stat-value" id="c-bm">…</span></div>
       <div class="stat-row"><span class="stat-label">📖 リーディングリスト</span><span class="stat-value" id="c-rl">…</span>
       </div>
-      <div class="stat-row"><span class="stat-label">🕒 履歴 (概算)</span><span class="stat-value" id="c-hs">…</span></div>
+      <div class="stat-row"><span class="stat-label">🕒 履歴</span><span class="stat-value" id="c-hs">…</span></div>
       <div class="stat-row"><span class="stat-label">📅 前回バックアップ</span><span class="stat-value"
           id="last-backup">—</span></div>
     </div>
+
     <div class="panel">
       <h2>対象を選択 (退避 &amp; 削除)</h2>
       <div class="chk-group">
-        <label class="chk-label"><input type="checkbox" id="chk-bm" checked> ブックマークを処理</label>
-        <label class="chk-label"><input type="checkbox" id="chk-rl" checked> リーディングリストを処理</label>
-        <label class="chk-label"><input type="checkbox" id="chk-hs" checked> 履歴を処理 (JSON)</label>
-        <label class="chk-label sub-chk"><input type="checkbox" id="chk-lw-hs" checked> ↳ 履歴をLinkwarden(HTML)</label>
-        <label class="chk-label sub-chk"><input type="checkbox" id="chk-csv-hs"> ↳ 履歴をCSVでも保存</label>
+        <label class="chk-label"><input type="checkbox" id="chk-bm" checked> ブックマーク</label>
+        <label class="chk-label"><input type="checkbox" id="chk-rl" checked> リーディングリスト</label>
+        <label class="chk-label"><input type="checkbox" id="chk-hs" checked> 履歴 (JSON)</label>
+        <label class="chk-label sub-chk"><input type="checkbox" id="chk-lw-hs" checked> ↳ Linkwarden(HTML)</label>
+        <label class="chk-label sub-chk"><input type="checkbox" id="chk-csv-hs"> ↳ CSV</label>
       </div>
-      <div class="accordion-header" id="acc-adv1"><span>⚙️ 詳細設定</span><span class="accordion-icon"
-          id="acc-adv1-icon">▶</span></div>
-      <div class="accordion-content" id="acc-adv1-content">
-        <div class="settings-row"><label>保存時に確認ダイアログ:</label><input type="checkbox" id="chk-save-as" checked></div>
-        <div class="settings-row"><label>削除前にドライラン:</label><input type="checkbox" id="chk-dry-run"></div>
+      <div class="accordion-header" id="acc-b1"><span>⚙️ 詳細</span><span class="accordion-icon" id="acc-b1-icon">▶</span>
+      </div>
+      <div class="accordion-content" id="acc-b1-content">
+        <div class="settings-row"><label>確認ダイアログ:</label><input type="checkbox" id="chk-save-as" checked></div>
+        <div class="settings-row"><label>ドライラン:</label><input type="checkbox" id="chk-dry-run"></div>
         <div class="settings-row"><label>差分バックアップ:</label><input type="checkbox" id="chk-diff"></div>
-        <div class="settings-row"><label>履歴取得件数:</label>
+        <div class="settings-row"><label>履歴取得上限:</label>
           <select id="hs-limit">
-            <option value="10000">10,000</option>
-            <option value="50000">50,000</option>
-            <option value="100000" selected>100,000</option>
-            <option value="500000">500,000</option>
+            <option value="10000">1万</option>
+            <option value="50000">5万</option>
+            <option value="100000" selected>10万</option>
+            <option value="500000">50万</option>
           </select>
         </div>
+        <div class="settings-row"><label>暗号化パスワード:</label></div>
+        <div class="enc-row"><input type="password" id="enc-password" placeholder="空=暗号化なし"></div>
       </div>
-      <div class="warn-note">⚠️ Brave/同期有効環境ではリーディングリストの削除が失敗する場合があります。</div>
+      <div class="warn-note">⚠️ Brave同期環境ではRL削除が失敗する場合があります。</div>
       <div class="progress-container" id="prog-browser">
         <div class="progress-bar">
           <div class="progress-fill" id="prog-browser-fill"></div>
         </div>
         <div class="progress-text" id="prog-browser-text"></div>
       </div>
-      <button id="btn-browser-run" class="action-btn btn-blue">💾 選択したデータを退避して削除</button>
-      <div class="btn-row"><button id="btn-browser-backup-only" class="action-btn btn-green">📥 バックアップのみ</button></div>
+      <button id="btn-browser-run" class="action-btn btn-blue">💾 退避して削除</button>
+      <div class="btn-row">
+        <button id="btn-browser-backup-only" class="action-btn btn-green">📥 バックアップのみ</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>🔄 バックアップ復元</h2>
+      <p class="note">HTML形式のブックマークファイルから復元します。</p>
+      <input type="file" id="file-restore-bm" accept=".html,.htm" style="font-size:11px; width:100%; margin:4px 0;">
+      <div class="settings-row"><label>復元先フォルダ名:</label><input type="text" id="restore-folder-name" value=""
+          placeholder="(空=ルート直下)"
+          style="width:140px;font-size:11px;padding:2px 4px;border:1px solid var(--border);border-radius:3px;background:var(--card);color:var(--text);">
+      </div>
+      <button id="btn-restore-bm" class="action-btn btn-purple">📂 ブックマークを復元</button>
     </div>
   </div>
 
-  <!-- タブ2: YouTube バックアップ -->
+  <!-- ═══════ タブ2: YouTube退避 ═══════ -->
   <div id="view-2" class="content">
     <div class="panel">
       <h2>1. 高評価リストのバックアップ</h2>
-      <p class="note">YouTubeの「高く評価した動画」を開いて実行。<br>URL: youtube.com/playlist?list=LL</p>
+      <p class="note">YouTube「高く評価した動画」を開いて実行。<br>URL: youtube.com/playlist?list=LL</p>
       <div class="chk-group">
-        <label class="chk-label"><input type="checkbox" id="yt-chk-json" checked> 📄 JSONをダウンロード</label>
+        <label class="chk-label"><input type="checkbox" id="yt-chk-json" checked> 📄 JSON</label>
         <label class="chk-label sub-chk"><input type="checkbox" id="yt-chk-lw" checked> ↳ Linkwarden(HTML)</label>
-        <label class="chk-label sub-chk"><input type="checkbox" id="yt-chk-csv"> ↳ CSV形式でも保存</label>
-        <label class="chk-label"><input type="checkbox" id="yt-chk-pl" checked> 📁 非公開プレイリストにコピー</label>
+        <label class="chk-label sub-chk"><input type="checkbox" id="yt-chk-csv"> ↳ CSV</label>
+        <label class="chk-label"><input type="checkbox" id="yt-chk-pl" checked> 📁 PLにコピー</label>
       </div>
-      <div class="accordion-header" id="acc-adv2"><span>⚙️ 詳細設定</span><span class="accordion-icon"
-          id="acc-adv2-icon">▶</span></div>
-      <div class="accordion-content" id="acc-adv2-content">
-        <div class="settings-row"><label>APIリクエスト間隔 (ms):</label><input type="number" id="yt-delay" value="400"
-            min="100" max="2000" step="50"></div>
-        <div class="settings-row"><label>バッチサイズ:</label><input type="number" id="yt-batch" value="50" min="1" max="200"
-            step="10"></div>
-        <div class="settings-row"><label>並列数:</label><input type="number" id="yt-parallel" value="1" min="1" max="5">
+      <div class="accordion-header" id="acc-y1"><span>⚙️ 詳細</span><span class="accordion-icon" id="acc-y1-icon">▶</span>
+      </div>
+      <div class="accordion-content" id="acc-y1-content">
+        <div class="settings-row"><label>API間隔 (ms):</label><input type="number" id="yt-delay" value="400" min="100"
+            max="2000" step="50"></div>
+        <div class="settings-row"><label>バッチ:</label><input type="number" id="yt-batch" value="50" min="1" max="200">
         </div>
-        <div class="settings-row"><label>スクロール最大:</label><input type="number" id="yt-scroll-max" value="300" min="10"
+        <div class="settings-row"><label>並列:</label><input type="number" id="yt-parallel" value="1" min="1" max="5">
+        </div>
+        <div class="settings-row"><label>スクロール上限:</label><input type="number" id="yt-scroll-max" value="300" min="10"
             max="1000"></div>
       </div>
     </div>
+
     <div class="panel" style="border: 2px solid #ffcccc;">
       <h2>2. 【危険】過去動画の遡り</h2>
       <div class="chk-group"><label class="chk-label"><input type="checkbox" id="yt-chk-del"><span
             class="danger-text">高評価を取り消す</span></label></div>
       <p class="note">5000件制限で隠れた古い動画が出現します。</p>
     </div>
-    <button id="btn-yt-run" class="action-btn btn-red">🚀 実行</button>
+
+    <div class="panel">
+      <h2>3. 📺 購読チャンネル退避 <span
+          style="font-size:9px;background:var(--blue);color:white;padding:1px 4px;border-radius:8px;">NEW</span></h2>
+      <p class="note">YouTube「チャンネル登録」ページを開いて実行。<br>URL: youtube.com/feed/channels</p>
+      <div class="chk-group">
+        <label class="chk-label"><input type="checkbox" id="yt-chk-sub-json" checked> JSON保存</label>
+        <label class="chk-label"><input type="checkbox" id="yt-chk-sub-csv"> CSV保存</label>
+      </div>
+      <button id="btn-yt-sub-export" class="action-btn btn-teal">📺 購読チャンネルを退避</button>
+    </div>
+
+    <button id="btn-yt-run" class="action-btn btn-red">🚀 高評価バックアップ実行</button>
     <div class="control-btns" id="yt-controls">
       <button class="mini-btn btn-orange" id="btn-yt-pause">⏸ 一時停止</button>
       <button class="mini-btn btn-red" id="btn-yt-cancel">⏹ 中止</button>
     </div>
   </div>
 
-  <!-- タブ3: YouTube 再評価 -->
+  <!-- ═══════ タブ3: YouTube復元 ═══════ -->
   <div id="view-3" class="content">
     <div class="panel">
       <h2>JSONから「高評価」を復元</h2>
-      <p class="note">保存したJSONを読み込み、動画に再Likeします。</p>
-      <input type="file" id="yt-file-restore" accept=".json" style="margin: 10px 0; width: 100%; font-size: 12px;">
+      <p class="note">保存したJSONを読み込み、再Likeします。</p>
+      <input type="file" id="yt-file-restore" accept=".json" style="margin:8px 0; width:100%; font-size:11px;">
       <div class="chk-group">
-        <label class="chk-label"><input type="checkbox" id="yt-restore-dedup" checked> 🔄 重複を自動除去</label>
-        <label class="chk-label"><input type="checkbox" id="yt-restore-resume" checked> 🔁 前回失敗分から再開</label>
+        <label class="chk-label"><input type="checkbox" id="yt-restore-dedup" checked> 重複除去</label>
+        <label class="chk-label"><input type="checkbox" id="yt-restore-resume" checked> 失敗分から再開</label>
       </div>
-      <div class="accordion-header" id="acc-adv3"><span>⚙️ 詳細設定</span><span class="accordion-icon"
-          id="acc-adv3-icon">▶</span></div>
-      <div class="accordion-content" id="acc-adv3-content">
-        <div class="settings-row"><label>リクエスト間隔 (ms):</label><input type="number" id="yt-restore-delay" value="400"
+      <div class="accordion-header" id="acc-y2"><span>⚙️ 詳細</span><span class="accordion-icon" id="acc-y2-icon">▶</span>
+      </div>
+      <div class="accordion-content" id="acc-y2-content">
+        <div class="settings-row"><label>間隔 (ms):</label><input type="number" id="yt-restore-delay" value="400"
             min="100" max="2000" step="50"></div>
-        <div class="settings-row"><label>最大リトライ回数:</label><input type="number" id="yt-retry" value="3" min="0" max="10">
+        <div class="settings-row"><label>リトライ:</label><input type="number" id="yt-retry" value="3" min="0" max="10">
         </div>
       </div>
       <div id="failed-info" class="info-note" style="display:none;"></div>
       <button id="btn-yt-restore" class="action-btn btn-green">❤️ 再評価する</button>
-      <button id="btn-retry-failed" class="action-btn btn-orange" style="display:none;">🔄 失敗分のみ再試行</button>
+      <button id="btn-retry-failed" class="action-btn btn-orange" style="display:none;">🔄 失敗分再試行</button>
     </div>
   </div>
 
-  <!-- タブ4: 統計 -->
+  <!-- ═══════ タブ4: タブ管理 ═══════ -->
   <div id="view-4" class="content">
     <div class="panel">
-      <h2>📊 処理統計</h2>
-      <div class="stat-card">
-        <div class="stat-item"><span class="stat-num" id="stat-bm-total">0</span><span class="stat-desc">BM退避</span>
-        </div>
-        <div class="stat-item"><span class="stat-num" id="stat-hs-total">0</span><span class="stat-desc">履歴退避</span>
-        </div>
-        <div class="stat-item"><span class="stat-num" id="stat-yt-backup">0</span><span class="stat-desc">YT退避</span>
-        </div>
-        <div class="stat-item"><span class="stat-num" id="stat-yt-restore">0</span><span class="stat-desc">YT復元</span>
-        </div>
-        <div class="stat-item"><span class="stat-num" id="stat-url-cleaned">0</span><span class="stat-desc">URL浄化</span>
-        </div>
-        <div class="stat-item"><span class="stat-num" id="stat-runs">0</span><span class="stat-desc">総実行</span></div>
+      <h2>📑 現在のタブ (<span id="tab-count">0</span>個)</h2>
+      <div style="max-height:200px;overflow-y:auto;" id="tab-list"></div>
+      <div class="btn-row" style="margin-top:6px;">
+        <button class="mini-btn btn-blue" id="btn-tab-select-all">全選択</button>
+        <button class="mini-btn btn-orange" id="btn-tab-deselect">全解除</button>
       </div>
     </div>
+
     <div class="panel">
-      <h2>🕘 実行履歴</h2>
-      <div id="history-list" style="font-size:11px;max-height:200px;overflow-y:auto;">
-        <p class="note">なし</p>
+      <h2>クイック操作</h2>
+      <div class="btn-row">
+        <button class="mini-btn btn-red" id="btn-tab-close-selected">選択を閉じる</button>
+        <button class="mini-btn btn-purple" id="btn-tab-close-dup">重複を閉じる</button>
       </div>
+      <div class="btn-row">
+        <button class="mini-btn btn-teal" id="btn-tab-close-other">他のタブを閉じる</button>
+        <button class="mini-btn btn-orange" id="btn-tab-close-left">左側を閉じる</button>
+      </div>
+      <div class="settings-row" style="margin-top:4px;">
+        <label>ドメインで閉じる:</label>
+        <select id="tab-domain-select" style="flex:1;margin-left:6px;"></select>
+      </div>
+      <button class="mini-btn btn-red" id="btn-tab-close-domain" style="width:100%;margin-top:3px;">指定ドメインを閉じる</button>
     </div>
-    <button id="btn-stats-reset" class="action-btn btn-red">🗑️ 統計リセット</button>
+
+    <div class="panel">
+      <h2>💾 セッション管理</h2>
+      <div class="btn-row">
+        <button class="mini-btn btn-blue" id="btn-tab-save-session">現在を保存</button>
+        <button class="mini-btn btn-teal" id="btn-tab-save-sel">選択を保存</button>
+      </div>
+      <div style="max-height:160px;overflow-y:auto;margin-top:6px;" id="session-list"></div>
+    </div>
   </div>
 
-  <!-- タブ5: 設定 -->
+  <!-- ═══════ タブ5: 分析 ═══════ -->
   <div id="view-5" class="content">
+    <div class="panel">
+      <h2>📊 ブックマーク分析</h2>
+      <button id="btn-analyze" class="action-btn btn-blue">🔍 分析を実行</button>
+      <div class="stat-card" style="display:none;" id="analysis-cards">
+        <div class="stat-item"><span class="stat-num" id="an-total">0</span><span class="stat-desc">合計</span></div>
+        <div class="stat-item"><span class="stat-num" id="an-dup">0</span><span class="stat-desc">重複</span></div>
+        <div class="stat-item"><span class="stat-num" id="an-domains">0</span><span class="stat-desc">ドメイン数</span></div>
+        <div class="stat-item"><span class="stat-num" id="an-folders">0</span><span class="stat-desc">フォルダ数</span></div>
+      </div>
+      <div id="analysis-top-domains" style="margin-top:6px;"></div>
+    </div>
+
+    <div class="panel">
+      <h2>🔍 リンクチェック</h2>
+      <p class="note">全ブックマークの死リンクを検出します（数分かかる場合があります）。</p>
+      <div class="settings-row"><label>並列数:</label><input type="number" id="link-check-parallel" value="5" min="1"
+          max="20"></div>
+      <button id="btn-link-check" class="action-btn btn-orange">🔗 リンクチェック開始</button>
+      <div class="progress-container" id="prog-link">
+        <div class="progress-bar">
+          <div class="progress-fill" id="prog-link-fill"></div>
+        </div>
+        <div class="progress-text" id="prog-link-text"></div>
+      </div>
+      <div id="link-results" class="result-list" style="display:none;"></div>
+      <button id="btn-link-delete-dead" class="action-btn btn-red" style="display:none; margin-top:4px;">🗑️
+        死リンクを一括削除</button>
+    </div>
+
+    <div class="panel">
+      <h2>📂 重複ブックマーク除去</h2>
+      <button id="btn-dedup" class="action-btn btn-purple">🔍 重複を検出</button>
+      <div id="dedup-results" class="result-list" style="display:none;"></div>
+      <button id="btn-dedup-remove" class="action-btn btn-red" style="display:none; margin-top:4px;">🗑️
+        重複を一括削除</button>
+    </div>
+  </div>
+
+  <!-- ═══════ タブ6: 設定 ═══════ -->
+  <div id="view-6" class="content">
     <div class="panel">
       <h2>🔔 通知</h2>
       <div class="chk-group">
@@ -571,17 +783,22 @@
           <option value="10080" selected>毎週</option>
           <option value="43200">毎月</option>
         </select></div>
-      <div class="info-note">ブラウザが開いている時のみ動作</div>
     </div>
     <div class="panel">
       <h2>🧹 URLクリーナー</h2>
       <div class="stat-row"><span class="stat-label">今日</span><span class="stat-value" id="url-today">0</span></div>
       <div class="chk-group">
-        <label class="chk-label"><input type="checkbox" id="cfg-url-enabled" checked> 有効化</label>
-        <label class="chk-label"><input type="checkbox" id="cfg-url-log"> ログ表示</label>
+        <label class="chk-label"><input type="checkbox" id="cfg-url-enabled" checked> 有効</label>
+        <label class="chk-label"><input type="checkbox" id="cfg-url-log"> ログ</label>
       </div>
       <div class="settings-row"><label>除外ドメイン(改行区切り):</label></div>
-      <textarea id="cfg-url-exclude" rows="3" placeholder="example.com"></textarea>
+      <textarea id="cfg-url-exclude" rows="2" placeholder="example.com"></textarea>
+    </div>
+    <div class="panel">
+      <h2>⌨️ ショートカット</h2>
+      <div class="stat-row"><span class="stat-label">Alt+Shift+B</span><span class="stat-label">クイックバックアップ</span></div>
+      <div class="stat-row"><span class="stat-label">Alt+Shift+T</span><span class="stat-label">タブを保存</span></div>
+      <p class="note">Chromeのchrome://extensions/shortcuts で変更可能</p>
     </div>
     <div class="panel">
       <h2>💾 データ管理</h2>
@@ -590,6 +807,7 @@
         <button id="btn-import-settings" class="action-btn btn-green">📥 設定インポート</button>
       </div>
       <input type="file" id="import-settings-file" accept=".json" style="display:none;">
+      <button id="btn-stats-reset" class="action-btn btn-red" style="margin-top:4px;">🗑️ 全データリセット</button>
     </div>
   </div>
 
