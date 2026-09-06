@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <meta name="referrer" content="no-referrer">
+    <title>Bookmark Suite</title>
+
+    <link rel="icon"
+        href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231e3a5f'/%3E%3Cpath d='M33 15h34v68l-17-13-17 13z' fill='%23fff'/%3E%3C/svg%3E">
+
+    <link rel="stylesheet" href="./style.css">
+</head>
+
+<body>
+    <!-- =========================================================
+         HEADER
+    ========================================================== -->
+    <header id="app-header">
+        <h1>🔖 Bookmark Suite</h1>
+
+        <button type="button" class="hdr-btn" id="theme-toggle" title="テーマ切替" aria-label="テーマを切り替える">
+            🌙 Dark
+        </button>
+
+        <div class="hdr-menu-wrap">
+            <button type="button" class="hdr-btn" id="settings-toggle" title="表示設定" aria-haspopup="true"
+                aria-expanded="false">
+                ⚙️
+            </button>
+
+            <div class="hdr-menu" id="settings-menu" hidden>
+                <label class="hm-item">
+                    <input type="checkbox" id="set-favicons">
+                    ファビコンを表示
+                </label>
+
+                <label class="hm-item">
+                    <input type="checkbox" id="set-autopreview">
+                    選択時に自動プレビュー
+                </label>
+
+                <label class="hm-item">
+                    <input type="checkbox" id="set-preview-scripts">
+                    プレビュー内スクリプト許可
+                </label>
+
+                <div class="hm-sep"></div>
+
+                <div class="hm-note">
+                    設定は自動保存されます
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- =========================================================
+         MAIN TAB BAR
+    ========================================================== -->
+    <nav id="tab-bar" aria-label="メイン機能">
+        <button type="button" class="tab-btn active" data-tab="merger" aria-controls="tab-merger">
+            📚 マージ・最適化
+        </button>
+
+        <button type="button" class="tab-btn" data-tab="editor" aria-controls="tab-editor">
+            ✏️ エディタ
+        </button>
+    </nav>
+
+    <!-- =========================================================
+         MERGER
+    ========================================================== -->
+    <main id="tab-merger" class="tab-content active">
+        <div id="merger-view">
+            <p class="desc">
+                複数のブックマークHTMLを統合・最適化します。<br>
+                重複URL削除、ドメイン別フォルダ整理、ファイル間の差分抽出が可能です。
+            </p>
+
+            <section class="card" aria-labelledby="merger-file-title">
+                <h2 id="merger-file-title">📂 ファイルを選択</h2>
+
+                <div class="drop-zone" id="m-drop" role="button" tabindex="0" aria-label="ブックマークHTMLファイルを選択">
+                    <span class="dz-icon" aria-hidden="true">📁</span>
+
+                    <span>
+                        ここにHTMLをドラッグ&amp;ドロップ、またはクリックして選択
+                    </span>
+
+                    <br>
+
+                    <small>
+                        2ファイル以上で差分抽出も可能
+                    </small>
+                </div>
+
+                <input type="file" id="m-file-input" multiple accept=".html,.htm,text/html">
+
+                <div class="file-chips" id="m-chips" aria-live="polite"></div>
+            </section>
+
+            <section class="card" id="m-result" style="display:none" aria-labelledby="merger-result-title">
+                <h2 id="merger-result-title">📊 解析結果</h2>
+
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <span class="num" id="m-s-total">0</span>
+                        <span class="lbl">総リンク数（重複込み）</span>
+                    </div>
+
+                    <div class="stat-box">
+                        <span class="num" id="m-s-merged">0</span>
+                        <span class="lbl">統合後（ユニーク）</span>
+                    </div>
+
+                    <div class="stat-box">
+                        <span class="num" id="m-s-diff">0</span>
+                        <span class="lbl">差分のみ（非重複）</span>
+                    </div>
+                </div>
+
+                <div class="btn-group">
+                    <button type="button" id="m-dl-merge" class="dl-btn btn-blue" disabled>
+                        🔗 すべて統合してDL
+                    </button>
+
+                    <button type="button" id="m-dl-diff" class="dl-btn btn-green" disabled>
+                        ✂️ 差分のみDL
+                    </button>
+
+                    <button type="button" id="m-to-editor" class="dl-btn btn-purple" disabled>
+                        ✏️ エディタで開く
+                    </button>
+                </div>
+
+                <div class="log-box show" id="m-log" role="log" aria-live="polite"></div>
+            </section>
+        </div>
+    </main>
+
+    <!-- =========================================================
+         EDITOR
+    ========================================================== -->
+    <main id="tab-editor" class="tab-content">
+        <div id="editor-view">
+            <!-- =================================================
+                 MAIN TOOLBAR
+            ================================================== -->
+            <div id="ed-main-toolbar" role="toolbar" aria-label="エディタ操作">
+                <div class="tb-group">
+                    <button type="button" class="tb-btn" id="tb-import">
+                        📂 開く
+                    </button>
+
+                    <button type="button" class="tb-btn" id="tb-export" disabled>
+                        💾 HTML
+                    </button>
+
+                    <button type="button" class="tb-btn" id="tb-export-json" disabled>
+                        📋 JSON
+                    </button>
+
+                    <input type="file" id="ed-file-input" accept=".html,.htm,.json,text/html,application/json">
+                </div>
+
+                <div class="tb-sep" aria-hidden="true"></div>
+
+                <div class="tb-group">
+                    <button type="button" class="tb-btn" id="tb-undo" title="元に戻す (Ctrl+Z)" aria-label="元に戻す" disabled>
+                        ↶
+                    </button>
+
+                    <button type="button" class="tb-btn" id="tb-redo" title="やり直し (Ctrl+Shift+Z)" aria-label="やり直し"
+                        disabled>
+                        ↷
+                    </button>
+                </div>
+
+                <div class="tb-sep" aria-hidden="true"></div>
+
+                <div class="tb-group tb-sel-group disabled" id="tb-sel-group">
+                    <button type="button" class="tb-btn" id="tb-edit" title="編集 (F2)">
+                        ✏️
+                    </button>
+
+                    <button type="button" class="tb-btn" id="tb-copy-url" title="URLコピー (Ctrl+C)">
+                        📋
+                    </button>
+
+                    <button type="button" class="tb-btn" id="tb-move-to">
+                        📁 移動
+                    </button>
+
+                    <button type="button" class="tb-btn" id="tb-tag-btn" title="タグ編集">
+                        🏷️
+                    </button>
+
+                    <button type="button" class="tb-btn" id="tb-rate-btn" title="レーティング">
+                        ⭐
+                    </button>
+
+                    <button type="button" class="tb-btn tb-danger" id="tb-delete" title="削除 (Delete)">
+                        🗑️
+                    </button>
+                </div>
+
+                <div class="tb-sep" aria-hidden="true"></div>
+
+                <div class="tb-group">
+                    <button type="button" class="tb-btn tb-primary" id="tb-add-link" title="リンク追加 (Ctrl+L)" disabled>
+                        ＋ リンク
+                    </button>
+
+                    <button type="button" class="tb-btn tb-primary" id="tb-add-folder" title="フォルダ追加 (Ctrl+Shift+N)"
+                        disabled>
+                        📁＋
+                    </button>
+
+                    <button type="button" class="tb-btn" id="tb-add-root" title="ルートフォルダ追加">
+                        🌳＋
+                    </button>
+                </div>
+
+                <div class="tb-sep" aria-hidden="true"></div>
+
+                <div class="tb-group">
+                    <button type="button" class="tb-btn" id="tb-dedup" title="重複URLを整理" disabled>
+                        🔀 重複整理
+                    </button>
+
+                    <button type="button" class="tb-btn" id="tb-find-dup" title="重複URLをハイライト" disabled>
+                        👁️ 重複表示
+                    </button>
+                </div>
+
+                <div class="tb-spacer"></div>
+
+                <div class="tb-group">
+                    <span id="ed-stats" aria-live="polite"></span>
+
+                    <button type="button" class="tb-btn" id="tb-keys" title="ショートカット (?)">
+                        ⌨️
+                    </button>
+
+                    <button type="button" class="tb-btn" id="tb-collapse" title="フォルダツリー表示切替">
+                        ◀
+                    </button>
+
+                    <button type="button" class="tb-btn active" id="tb-preview" title="プレビュー表示切替 (Ctrl+P)">
+                        🖼️
+                    </button>
+                </div>
+            </div>
+
+            <!-- =================================================
+                 EDITOR CONTENT TABS
+            ================================================== -->
+            <div id="ed-content-tabs" role="tablist" aria-label="フォルダタブ"></div>
+
+            <!-- =================================================
+                 EDITOR LAYOUT
+            ================================================== -->
+            <div id="ed-layout">
+                <!-- =============================================
+                     TREE PANEL
+                ============================================== -->
+                <aside id="ed-tree-panel" aria-label="フォルダツリー">
+                    <div id="ed-tree-header">
+                        <span>📁 フォルダ</span>
+
+                        <div class="tree-hdr-btns">
+                            <button type="button" class="tree-sm-btn" id="tree-expand-all" title="全展開"
+                                aria-label="すべて展開">
+                                ⊞
+                            </button>
+
+                            <button type="button" class="tree-sm-btn" id="tree-collapse-all" title="全折畳"
+                                aria-label="すべて折りたたむ">
+                                ⊟
+                            </button>
+
+                            <button type="button" class="tree-sm-btn" id="tree-add-root" title="ルートフォルダ追加"
+                                aria-label="ルートフォルダ追加">
+                                ＋
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="ed-tree-scroll">
+                        <div class="tree-empty">
+                            ファイルをインポートして<br>
+                            開始してください
+                        </div>
+                    </div>
+                </aside>
+
+                <div class="ed-divider" id="ed-divider1" role="separator" aria-orientation="vertical"
+                    aria-label="ツリーパネル幅変更"></div>
+
+                <!-- =============================================
+                     CONTENT PANEL
+                ============================================== -->
+                <section id="ed-content-panel">
+                    <!-- Filter bar -->
+                    <div id="ed-filter-bar">
+                        <div id="ed-breadcrumb" aria-label="現在のフォルダ">
+                            <span class="bc-item" data-action="nav-root">
+                                🏠 Root
+                            </span>
+                        </div>
+
+                        <div class="bar-sep" aria-hidden="true"></div>
+
+                        <select class="filter-sel" id="flt-type" title="種類" aria-label="種類で絞り込み">
+                            <option value="all">すべて</option>
+                            <option value="link">🔗 リンク</option>
+                            <option value="folder">📁 フォルダ</option>
+                        </select>
+
+                        <select class="filter-sel" id="flt-rating" title="評価" aria-label="レーティングで絞り込み">
+                            <option value="0">⭐ すべて</option>
+                            <option value="1">⭐ 以上</option>
+                            <option value="2">⭐⭐ 以上</option>
+                            <option value="3">⭐⭐⭐ 以上</option>
+                            <option value="4">⭐⭐⭐⭐ 以上</option>
+                            <option value="5">⭐⭐⭐⭐⭐</option>
+                        </select>
+
+                        <input type="search" id="flt-tag" class="filter-sel filter-input" placeholder="🏷️ タグ"
+                            aria-label="タグで絞り込み">
+
+                        <input type="search" id="flt-domain" class="filter-sel filter-input filter-domain"
+                            placeholder="🌐 ドメイン" aria-label="ドメインで絞り込み">
+
+                        <button type="button" class="bar-btn" id="flt-tagunset" title="タグ未設定のみ" aria-pressed="false">
+                            🏷️未設定
+                        </button>
+
+                        <select class="filter-sel" id="flt-sort" title="並び替え" aria-label="並び替え">
+                            <option value="default">デフォルト順</option>
+                            <option value="name">名前 A→Z</option>
+                            <option value="name-d">名前 Z→A</option>
+                            <option value="rating">評価 高→低</option>
+                            <option value="rating-d">評価 低→高</option>
+                            <option value="date">日付 新→旧</option>
+                            <option value="date-d">日付 旧→新</option>
+                            <option value="url">URL A→Z</option>
+                        </select>
+
+                        <div class="bar-sep" aria-hidden="true"></div>
+
+                        <select class="filter-sel preset-select" id="flt-preset" title="保存済み検索" aria-label="保存済み検索">
+                            <option value="">📁 保存済み</option>
+                        </select>
+
+                        <button type="button" class="bar-btn" id="flt-preset-save" title="現在の検索条件を保存"
+                            aria-label="検索条件を保存">
+                            💾
+                        </button>
+
+                        <div class="bar-sep" aria-hidden="true"></div>
+
+                        <button type="button" class="bar-btn" id="list-top" title="先頭へ移動" aria-label="先頭へ移動">
+                            ⬆
+                        </button>
+
+                        <button type="button" class="bar-btn" id="list-bot" title="末尾へ移動" aria-label="末尾へ移動">
+                            ⬇
+                        </button>
+
+                        <button type="button" class="bar-btn" id="btn-search" title="検索 (Ctrl+F)" aria-label="検索を開く">
+                            🔍
+                        </button>
+                    </div>
+
+                    <!-- Search bar -->
+                    <div id="ed-search-bar">
+                        <div class="search-row search-primary-row">
+                            <input type="search" id="ed-search-input" autocomplete="off" spellcheck="false"
+                                placeholder='検索... 例: domain:github.com tag:tutorial rating:>=4 -jquery'
+                                aria-label="ブックマークを検索">
+
+                            <span id="ed-search-count" aria-live="polite"></span>
+
+                            <button type="button" class="bar-btn" id="sch-prev" title="前の一致 (Shift+Enter)"
+                                aria-label="前の検索結果">
+                                ▲
+                            </button>
+
+                            <button type="button" class="bar-btn" id="sch-next" title="次の一致 (Enter)"
+                                aria-label="次の検索結果">
+                                ▼
+                            </button>
+
+                            <div class="scope-grp" aria-label="検索範囲">
+                                <button type="button" class="scope-btn on" data-scope="deep">
+                                    全体
+                                </button>
+
+                                <button type="button" class="scope-btn" data-scope="current">
+                                    現在
+                                </button>
+                            </div>
+
+                            <button type="button" class="bar-btn" id="ed-search-clear" title="検索クリア"
+                                aria-label="検索をクリア">
+                                ✕
+                            </button>
+                        </div>
+
+                        <div class="search-row search-options-row">
+                            <div class="scope-grp" aria-label="検索条件">
+                                <button type="button" class="scope-btn on" id="sch-mode-and">
+                                    AND
+                                </button>
+
+                                <button type="button" class="scope-btn" id="sch-mode-or">
+                                    OR
+                                </button>
+                            </div>
+
+                            <label class="chk-item">
+                                <input type="checkbox" id="sch-title" checked>
+                                タイトル
+                            </label>
+
+                            <label class="chk-item">
+                                <input type="checkbox" id="sch-url" checked>
+                                URL
+                            </label>
+
+                            <label class="chk-item">
+                                <input type="checkbox" id="sch-tags" checked>
+                                タグ
+                            </label>
+
+                            <label class="chk-item" title="大文字・小文字を区別">
+                                <input type="checkbox" id="sch-case">
+                                Aa
+                            </label>
+
+                            <label class="chk-item">
+                                <input type="checkbox" id="sch-word">
+                                完全一致
+                            </label>
+
+                            <label class="chk-item">
+                                <input type="checkbox" id="sch-regex">
+                                .* 正規表現
+                            </label>
+                        </div>
+
+                        <div class="search-help">
+                            <span>例:</span>
+                            <code>domain:github.com</code>
+                            <code>tag:tutorial</code>
+                            <code>rating:&gt;=4</code>
+                            <code>type:link</code>
+                            <code>after:2024-01-01</code>
+                            <code>path:"開発/資料"</code>
+                            <code>is:duplicate</code>
+                            <code>is:untagged</code>
+                            <code>is:invalid</code>
+                            <code>-archive</code>
+                            <code>~javascrpt</code>
+                        </div>
+                    </div>
+
+                    <!-- Content list -->
+                    <div id="ed-content-list" role="list" aria-label="ブックマーク一覧">
+                        <div class="ed-empty">
+                            <span class="big-ico" aria-hidden="true">📚</span>
+
+                            <span>
+                                ファイルを開いて開始<br>
+
+                                <small>
+                                    Netscape Bookmark HTML / JSON 対応
+                                </small>
+                            </span>
+                        </div>
+                    </div>
+                </section>
+
+                <div class="ed-divider" id="ed-divider2" role="separator" aria-orientation="vertical"
+                    aria-label="プレビューパネル幅変更"></div>
+
+                <!-- =============================================
+                     PREVIEW PANEL
+                ============================================== -->
+                <aside id="ed-preview-panel" aria-label="Webプレビュー">
+                    <div id="ed-preview-header">
+                        <span aria-hidden="true">🖼️</span>
+                        <span id="ed-preview-title">プレビュー</span>
+
+                        <button type="button" class="tree-sm-btn" id="preview-open" title="新しいタブで開く"
+                            aria-label="新しいタブで開く" style="display:none">
+                            ↗
+                        </button>
+
+                        <button type="button" class="tree-sm-btn" id="preview-reload" title="再読込" aria-label="プレビュー再読込"
+                            style="display:none">
+                            ↻
+                        </button>
+                    </div>
+
+                    <div id="ed-preview-frame-wrap">
+                        <iframe id="ed-preview-iframe" title="選択したブックマークのプレビュー" sandbox="allow-forms allow-popups"
+                            referrerpolicy="no-referrer"></iframe>
+
+                        <div id="ed-preview-loading">
+                            読込中...
+                        </div>
+
+                        <div id="ed-preview-fallback">
+                            <div class="fb-ico" aria-hidden="true">🚫</div>
+
+                            <div class="fb-title">
+                                プレビューできません
+                            </div>
+
+                            <div class="fb-message">
+                                このサイトはiframeでの表示を許可していない可能性があります。
+                            </div>
+
+                            <div class="fb-url" id="fb-url"></div>
+
+                            <a id="fb-link" href="#" target="_blank" rel="noopener noreferrer">
+                                ↗ 新しいタブで開く
+                            </a>
+                        </div>
+                    </div>
+                </aside>
+            </div>
+
+            <!-- =================================================
+                 STATUS BAR
+            ================================================== -->
+            <div id="ed-statusbar">
+                <span id="ed-sb-msg" aria-live="polite">
+                    準備完了
+                </span>
+
+                <span class="sb-badge" id="sb-autosave" style="display:none">
+                    自動保存
+                </span>
+
+                <span class="sb-badge dirty" id="sb-dirty" style="display:none">
+                    未保存
+                </span>
+
+                <span id="ed-sb-counts"></span>
+            </div>
+        </div>
+    </main>
+
+    <!-- =========================================================
+         EDIT MODAL
+    ========================================================== -->
+    <div class="modal-ov" id="ed-modal" role="dialog" aria-modal="true" aria-labelledby="ed-modal-title">
+        <div class="modal-box" id="ed-edit-box">
+            <h3 id="ed-modal-title">編集</h3>
+
+            <div class="mf">
+                <label for="ed-m-name">タイトル</label>
+                <input type="text" id="ed-m-name" maxlength="4000" autocomplete="off">
+            </div>
+
+            <div class="mf" id="ed-m-url-f">
+                <label for="ed-m-url">URL</label>
+                <input type="url" id="ed-m-url" maxlength="20000" placeholder="https://..." autocomplete="off">
+            </div>
+
+            <div class="mf">
+                <label for="ed-m-tags">
+                    タグ
+                    <small>スペースまたはカンマ区切り</small>
+                </label>
+
+                <input type="text" id="ed-m-tags" placeholder="例: javascript tutorial" autocomplete="off">
+
+                <div id="ed-m-tag-sug"></div>
+            </div>
+
+            <div class="mf">
+                <label>レーティング</label>
+
+                <div class="star-picker" id="ed-m-stars" aria-label="レーティング">
+                    <button type="button" class="star-pick" data-v="1" aria-label="1">★</button>
+                    <button type="button" class="star-pick" data-v="2" aria-label="2">★</button>
+                    <button type="button" class="star-pick" data-v="3" aria-label="3">★</button>
+                    <button type="button" class="star-pick" data-v="4" aria-label="4">★</button>
+                    <button type="button" class="star-pick" data-v="5" aria-label="5">★</button>
+                </div>
+            </div>
+
+            <div class="m-acts">
+                <button type="button" class="m-cancel" id="ed-m-cancel">
+                    キャンセル
+                </button>
+
+                <button type="button" class="m-save" id="ed-m-save">
+                    💾 保存
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- =========================================================
+         MOVE MODAL
+    ========================================================== -->
+    <div class="modal-ov" id="ed-move-modal" role="dialog" aria-modal="true" aria-labelledby="ed-move-title">
+        <div class="modal-box" id="ed-move-box">
+            <h3 id="ed-move-title">
+                📁 移動先フォルダを選択
+            </h3>
+
+            <div id="ed-move-list"></div>
+
+            <button type="button" id="ed-move-cancel">
+                キャンセル
+            </button>
+        </div>
+    </div>
+
+    <!-- =========================================================
+         KEYBOARD SHORTCUT MODAL
+    ========================================================== -->
+    <div class="modal-ov" id="ed-keys-modal" role="dialog" aria-modal="true" aria-labelledby="ed-keys-title">
+        <div class="modal-box" id="ed-keys-box">
+            <h3 id="ed-keys-title">
+                ⌨️ キーボードショートカット
+            </h3>
+
+            <section class="keys-section">
+                <h4>ファイル</h4>
+
+                <div class="key-row">
+                    <span class="key-desc">開く</span>
+                    <div class="keys">
+                        <kbd>Ctrl</kbd> + <kbd>O</kbd>
+                    </div>
+                </div>
+
+                <div class="key-row">
+                    <span class="key-desc">HTML保存</span>
+                    <div class="keys">
+                        <kbd>Ctrl</kbd> + <kbd>S</kbd>
+                    </div>
+                </div>
+
+                <div class="key-row">
+                    <span class="key-desc">元に戻す</span>
+                    <div class="keys">
+                        <kbd>Ctrl</kbd> + <kbd>Z</kbd>
+                    </div>
+                </div>
+
+                <div class="key-row">
+                    <span class="key-desc">やり直し</span>
+                    <div class="keys">
+                        <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd>
+                    </div>
+                </div>
+            </section>
+
+            <section class="keys-section">
+                <h4>ナビゲーション</h4>
+
+                <div class="key-row">
+                    <span class="key-desc">開く / 進む</span>
+                    <div class="keys"><kbd>Enter</kbd></div>
+                </div>
+
+                <div class="key-row">
+                    <span class="key-desc">親フォルダへ戻る</span>
+                    <div class="keys">
+                        <kbd>Backspace</kbd>
+                    </div>
+                </div>
+
+                <div class="key-row">
+                    <span class="key-desc">上下移動</span>
+                    <div class="keys">
+                        <kbd>↑</kbd> / <kbd>↓</kbd>
+                    </div>
+                </div>
+
+                <div class="key-row">
+                    <span class="key-desc">先頭 / 末尾</span>
+                    <div class="keys">
+                        <kbd>Home</kbd> / <kbd>End</kbd>
+                    </div>
+                </div>
+            </section>
+
+            <section class="keys-section">
+                <h4>選択・操作</h4>
+
+                <div class="key-row">
+                    <span class="key-desc">すべて選択</span>
+                    <div class="keys">
+                        <kbd>Ctrl</kbd> + <kbd>A</kbd>
+                    </div>
+                </div>
+
+                <div class="key-row">
+                    <span class="key-desc">編集</span>
+                    <div class="keys"><kbd>F2</kbd></div>
+                </div>
+
+                <div class="key-row">
+                    <span class="key-desc">削除</span>
+                    <div class="keys"><kbd>Delete</kbd></div>
+                </div>
+
+                <div class="key-row">
+                    <span class="key-desc">URLコピー</span>
+                    <div class="keys">
+                        <kbd>Ctrl</kbd> + <kbd>C</kbd>
+                    </div>
+                </div>
+
+                <div class="key-row">
+                    <span class="key-desc">リンク追加</span>
+                    <div class="keys">
+                        <kbd>Ctrl</kbd> + <kbd>L</kbd>
+                    </div>
+                </div>
+
+                <div class="key-row">
+                    <span class="key-desc">フォルダ追加</span>
+                    <div class="keys">
+                        <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>N</kbd>
+                    </div>
+                </div>
+            </section>
+
+            <section class="keys-section">
+                <h4>検索・表示</h4>
+
+                <div class="key-row">
+                    <span class="key-desc">検索</span>
+                    <div class="keys">
+                        <kbd>Ctrl</kbd> + <kbd>F</kbd>
+                    </div>
+                </div>
+
+                <div class="key-row">
+                    <span class="key-desc">次 / 前の検索結果</span>
+                    <div class="keys">
+                        <kbd>Enter</kbd> /
+                        <kbd>Shift</kbd> + <kbd>Enter</kbd>
+                    </div>
+                </div>
+
+                <div class="key-row">
+                    <span class="key-desc">新しいタブ</span>
+                    <div class="keys">
+                        <kbd>Ctrl</kbd> + <kbd>T</kbd>
+                    </div>
+                </div>
+
+                <div class="key-row">
+                    <span class="key-desc">タブを閉じる</span>
+                    <div class="keys">
+                        <kbd>Ctrl</kbd> + <kbd>W</kbd>
+                    </div>
+                </div>
+
+                <div class="key-row">
+                    <span class="key-desc">プレビュー切替</span>
+                    <div class="keys">
+                        <kbd>Ctrl</kbd> + <kbd>P</kbd>
+                    </div>
+                </div>
+            </section>
+
+            <div class="m-acts">
+                <button type="button" class="m-cancel" id="ed-keys-close">
+                    閉じる
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- =========================================================
+         TOAST
+    ========================================================== -->
+    <div id="toast" role="status" aria-live="polite"></div>
+
+    <script src="./app.js"></script>
+    <script src="./bridge.js"></script>
+</body>
+
+</html>

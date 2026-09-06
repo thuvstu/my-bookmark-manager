@@ -144,6 +144,24 @@ document.addEventListener('DOMContentLoaded', async () => {
   el('btn-retry-failed').addEventListener('click', ytRetryFailed);
   el('btn-stats-reset').addEventListener('click', resetStats);
 
+  // ── スイートヘッダー ──
+  el('btn-open-editor').addEventListener('click', () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL('index.html') });
+    window.close();
+  });
+
+  el('btn-quick-backup').addEventListener('click', async () => {
+    setStatus('⚡ クイックバックアップを実行中...');
+    try {
+      await chrome.runtime.sendMessage({ type: 'quick-backup' });
+      setStatus('✅ クイックバックアップを開始しました（ダウンロードを確認）');
+      await updateCounts();
+      await updateLastBackup();
+    } catch (err) {
+      setStatus('エラー: ' + err.message);
+    }
+  });
+
   // 設定タブ
   el('cfg-schedule').addEventListener('change', async (e) => {
     const freq = parseInt(el('cfg-schedule-freq').value) || 10080;
