@@ -576,12 +576,14 @@
         return parts.filter(Boolean).join(' ');
     }
 
+    const nodeMetaCache = new WeakMap();
     function getNodeMeta(node) {
-        return {
-            title: String(node?.title ?? ''),
-            tags: normalizeTags(node?.tags),
-            rating: Math.max(0, Math.min(5, Number(node?.rating) || 0))
-        };
+        if (!node || typeof node !== 'object') return { title: '', tags: [], rating: 0 };
+        const cached = nodeMetaCache.get(node);
+        if (cached && cached.titleSource === node.title && cached.tagsSource === node.tags && cached.ratingSource === node.rating) return cached.value;
+        const value = { title: String(node.title ?? ''), tags: normalizeTags(node.tags), rating: Math.max(0, Math.min(5, Number(node.rating) || 0)) };
+        nodeMetaCache.set(node, { titleSource: node.title, tagsSource: node.tags, ratingSource: node.rating, value });
+        return value;
     }
 
     function renderBadges(tags, rating) {
@@ -1386,8 +1388,8 @@
 
     function editorMutate(mutator, options = {}) {
         // 大規模データでは JSON.stringify が固まるので小さめの閾値でスキップ
-        const huge = editorTree && JSON.stringify(editorTree).length > 5_000_000;
-        const before = huge ? null : JSON.stringify(editorTree);
+        const before = JSON.stringify(editorTree);
+        const huge = before.length > 5_000_000;
 
         try {
             const result = mutator();
@@ -2259,6 +2261,96 @@
         toast('HTMLエクスポート完了', 'ok');
     }
 
+    function collectEditorLinks() {
+        const rows = [];
+        const visit = (nodes, path = []) => { for (const n of nodes || []) { if (n.type === 'folder') visit(n.children, [...path, n.title]); else rows.push({ title: n.title || '', url: n.url || '', folder: path.join(' / '), tags: normalizeTags(n.tags).join(', '), rating: Number(n.rating) || 0, added: n.addDate || '' }); } };
+        visit(editorTree); return rows;
+    }
+    function exportEditorCsv() {
+        const rows = collectEditorLinks(); const quote = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+        const csv = ['title,url,folder,tags,rating,added', ...rows.map(r => [r.title,r.url,r.folder,r.tags,r.rating,r.added].map(quote).join(','))].join('\r\n');
+        downloadBlob('\ufeff' + csv, `bookmarks_${new Date().toISOString().slice(0,10)}.csv`, 'text/csv;charset=utf-8');
+    }
+    function exportEditorMarkdown() {
+        const rows = collectEditorLinks(); const md = ['# Bookmarks', '', ...rows.map(r => `- [${String(r.title).replace(/[\[\]]/g, '\\$&')}](${r.url.replace(/[()\s]/g, c => encodeURIComponent(c))})${r.folder ? ` — ${r.folder}` : ''}${r.tags ? ` \`${r.tags.replace(/`/g, '')}\`` : ''}`)].join('\n');
+        downloadBlob(md, `bookmarks_${new Date().toISOString().slice(0,10)}.md`, 'text/markdown;charset=utf-8');
+    }
+    async function removeEmptyFolders() {
+        const before = countEditorTree().folders; let removed = 0;
+        const prune = nodes => { for (let i = nodes.length - 1; i >= 0; i--) { const n = nodes[i]; if (n.type !== 'folder') continue; prune(n.children || []); if (!(n.children || []).length) { nodes.splice(i,1); removed++; } } };
+        if (!before || !await uiConfirm('中身のないフォルダをすべて削除しますか？', { title: '🧹 空フォルダ整理', danger: true })) return;
+        editorMutate(() => { prune(editorTree); return true; }); toast(`${removed} 個の空フォルダを削除しました`, 'ok');
+    }
+
+    function getEditorTagCounts() {
+        const counts = new Map();
+        const visit = nodes => { for (const n of nodes || []) { for (const tag of normalizeTags(n.tags)) counts.set(tag, (counts.get(tag) || 0) + 1); if (n.type === 'folder') visit(n.children); } };
+        visit(editorTree); return counts;
+    }
+    async function manageEditorTags() {
+        const counts = getEditorTagCounts();
+        if (!counts.size) { toast('管理するタグがありません'); return; }
+        const rows = [...counts].sort((a,b) => b[1]-a[1] || a[0].localeCompare(b[0])).map(([tag,count],i) => `<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border,#ddd)"><span style="flex:1">${escapeHtml(tag)} <small>(${count})</small></span><button type="button" data-tag-action="rename" data-tag-index="${i}">名前変更</button><button type="button" data-tag-action="delete" data-tag-index="${i}">削除</button></div>`).join('');
+        const overlay = document.createElement('div'); overlay.className='modal-ov show'; overlay.dataset.suite='1';
+        overlay.innerHTML=`<div class="modal-box dlg-box" role="dialog" aria-modal="true"><h3>🏷️ タグ管理</h3><div style="max-height:55vh;overflow:auto">${rows}</div><div class="m-acts"><button type="button" class="m-cancel">閉じる</button></div></div>`;
+        document.body.appendChild(overlay);
+        overlay.querySelector('.m-cancel').onclick=()=>overlay.remove();
+        overlay.addEventListener('click', async e=>{const b=e.target.closest('[data-tag-action]');if(!b)return;const tag=[...counts.keys()][Number(b.dataset.tagIndex)];if(!tag)return;
+            if(b.dataset.tagAction==='delete'){if(!await uiConfirm(`タグ「${tag}」をすべての項目から削除しますか？`,{title:'タグ削除',danger:true}))return; editorMutate(()=>{const visit=nodes=>{for(const n of nodes||[]){n.tags=normalizeTags(n.tags).filter(t=>t!==tag);if(n.type==='folder')visit(n.children)}};visit(editorTree);return true;});toast('タグを削除しました','ok');overlay.remove();manageEditorTags();}
+            else {const next=await uiPrompt('タグ名変更',`「${tag}」の新しい名前`,tag);if(!next||next===tag)return;editorMutate(()=>{const visit=nodes=>{for(const n of nodes||[]){if(normalizeTags(n.tags).includes(tag))n.tags=normalizeTags(n.tags).map(t=>t===tag?next:t);if(n.type==='folder')visit(n.children)}};visit(editorTree);return true;});toast('タグを変更しました','ok');overlay.remove();manageEditorTags();}
+        });
+    }
+    function showEditorInsights() {
+        const domains=new Map(); const visit=nodes=>{for(const n of nodes||[]){if(n.type==='folder')visit(n.children);else{const d=getDomain(n.url)||'(不明)';domains.set(d,(domains.get(d)||0)+1)}}};visit(editorTree);
+        const top=[...domains].sort((a,b)=>b[1]-a[1]).slice(0,12); const total=countEditorTree();
+        const html=`<p>リンク <b>${total.links.toLocaleString()}</b> 件 / フォルダ <b>${total.folders.toLocaleString()}</b> 個 / ドメイン <b>${domains.size.toLocaleString()}</b> 種</p><h4>よく使うドメイン</h4><ol>${top.map(([d,n])=>`<li>${escapeHtml(d)} — ${n} 件</li>`).join('')||'<li>データがありません</li>'}</ol>`;
+        buildSuiteDialog({title:'📊 ブックマーク分析',bodyHtml:html,okLabel:'閉じる',cancelLabel:'閉じる'}).then(()=>{});
+    }
+    function suggestBookmarkTags(node, metadata = {}) {
+        const url = String(node.url || ''); const text = `${node.title || ''} ${url} ${metadata.title || ''} ${metadata.description || ''} ${metadata.keywords || ''}`.toLowerCase();
+        const tags = new Set(); const rules = [
+            ['開発', /github|gitlab|stackoverflow|developer|programming|javascript|typescript|python|api|コード|プログラミング|開発/],
+            ['デザイン', /design|figma|dribbble|behance|ui\/ux|デザイン|配色|フォント/],
+            ['ニュース', /news|新聞|ニュース|速報|報道/], ['学習', /learn|tutorial|course|docs|documentation|学習|講座|解説|入門/],
+            ['動画', /youtube|youtu\.be|ニコニコ|動画|video|stream/], ['買い物', /amazon|rakuten|shopping|store|商品|通販|価格/],
+            ['仕事', /notion|asana|trello|slack|仕事|業務|タスク/], ['AI', /artificial intelligence|machine learning|\bai\b|生成ai|機械学習|人工知能/],
+            ['セキュリティ', /security|privacy|脆弱性|セキュリティ|プライバシー/], ['レシピ', /recipe|cooking|レシピ|料理/]
+        ];
+        for (const [tag, re] of rules) if (re.test(text)) tags.add(tag);
+        try { const host = new URL(url).hostname.replace(/^www\./,'').split('.'); if (host.length > 1 && !['com','net','org','co','jp'].includes(host.at(-1))) tags.add(host.at(-1)); } catch {}
+        String(metadata.keywords || '').split(/[,、;|]/).slice(0, 5).forEach(t => { t=t.trim(); if(t.length>=2&&t.length<=24) tags.add(t); });
+        return [...tags].slice(0, 8);
+    }
+    async function autoTagSelectedBookmarks() {
+        if (!editorSelection.size) { toast('先に自動タグを付けたい項目を選択してください'); return; }
+        const nodes=[...editorSelection].map(id=>editorFind(id)).filter(n=>n?.type==='link');
+        if (!nodes.length) { toast('選択項目にリンクがありません'); return; }
+        const fetchAllowed = typeof chrome !== 'undefined' && chrome.runtime?.sendMessage;
+        const doFetch = fetchAllowed && await uiConfirm(`${nodes.length} 件を分類します。ページ情報取得は選択リンクのみ。最大 180 KB・4.5 秒、取得結果は 7 日間キャッシュします。キャンセルするとローカル情報だけで分類します。`, {title:'✨ 軽量AIタグ',okLabel:'取得して分類'});
+        let tagged=0, fetched=0; const changes=[];
+        for (const node of nodes) {
+            let meta={};
+            if(doFetch && fetched < 50) { try { const res=await chrome.runtime.sendMessage({type:'bookmark-metadata',url:node.url}); if(res?.ok){meta=res.metadata||{};fetched++;} } catch {} }
+            const found=suggestBookmarkTags(node,meta); const have=new Set(normalizeTags(node.tags).map(t=>t.toLocaleLowerCase())); const add=found.filter(t=>!have.has(t.toLocaleLowerCase()));
+            if(add.length){changes.push([node,add,changes.length]);tagged++;}
+        }
+        if(!changes.length){toast(`新しいタグ候補はありません（${fetched} 件を分類）`);return;}
+        const rows=changes.map(([node,tags,i])=>`<section style="padding:10px 0;border-bottom:1px solid var(--border,#ddd)"><strong>${escapeHtml(node.title||node.url)}</strong><div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">${tags.map((tag,j)=>`<label><input type="checkbox" checked data-proposal="${i}" data-tag="${j}"> ${escapeHtml(tag)}</label>`).join('')}</div></section>`).join('');
+        const overlay=document.createElement('div'); overlay.className='modal-ov show'; overlay.dataset.suite='1';
+        overlay.innerHTML=`<div class="modal-box dlg-box" role="dialog" aria-modal="true"><h3>✨ タグ候補を確認</h3><p>${changes.length} 件に候補があります。不要なタグのチェックを外してから適用できます。</p><div style="max-height:55vh;overflow:auto">${rows}</div><div class="m-acts"><button type="button" class="m-cancel">キャンセル</button><button type="button" class="m-save">選択したタグを適用</button></div></div>`;
+        document.body.appendChild(overlay);
+        const close=()=>overlay.remove(); overlay.querySelector('.m-cancel').onclick=close; overlay.addEventListener('keydown',e=>{if(e.key==='Escape')close();}); overlay.addEventListener('mousedown',e=>{if(e.target===overlay)close();});
+        overlay.querySelector('.m-save').onclick=()=>{const adds=new Map();overlay.querySelectorAll('input[data-proposal]:checked').forEach(box=>{const [node,tags]=changes[Number(box.dataset.proposal)];if(!adds.has(node))adds.set(node,[]);adds.get(node).push(tags[Number(box.dataset.tag)]);});
+            if(adds.size)editorMutate(()=>{for(const [node,tags] of adds)node.tags=[...normalizeTags(node.tags),...tags];return true;});close();toast(`${adds.size} 件にタグを適用しました（${fetched} 件をページ情報から分類）`,'ok');};
+    }
+
+    async function replaceSelectedText() {
+        if (!editorSelection.size) { toast('先に置換対象を選択してください'); return; }
+        const find=await uiPrompt('一括置換','タイトル・URL内で探す文字列'); if(!find)return;
+        const replace=await uiPrompt('一括置換',`「${find}」を何に置き換えますか？`,''); if(replace===null)return;
+        let changed=0; editorMutate(()=>{for(const id of editorSelection){const n=editorFind(id);if(!n)continue;for(const key of ['title','url'])if(typeof n[key]==='string'&&n[key].includes(find)){n[key]=n[key].split(find).join(replace);changed++;}}return true;});toast(`${changed} 個の項目を更新しました`,'ok');
+    }
+
     function exportEditorJson() {
         if (!editorTree.length) return;
 
@@ -2580,10 +2672,7 @@
 
     function fieldMatchesTerm(field, rawTerm) {
         const fuzzy = rawTerm.startsWith('~') && rawTerm.length > 1;
-        const sourceTerm = fuzzy
-            ? rawTerm.slice(1)
-            : rawTerm;
-
+        const sourceTerm = fuzzy ? rawTerm.slice(1) : rawTerm;
         const fieldValue = normalizeSearchValue(field);
         const term = normalizeSearchValue(sourceTerm);
 
@@ -3284,6 +3373,9 @@
 
         $('#tb-export').disabled = empty;
         $('#tb-export-json').disabled = empty;
+        if ($('#tb-export-csv')) $('#tb-export-csv').disabled = empty;
+        if ($('#tb-export-md')) $('#tb-export-md').disabled = empty;
+        if ($('#tb-clean-empty')) $('#tb-clean-empty').disabled = empty;
         const tbOpt = $('#tb-optimize');
         if (tbOpt) tbOpt.disabled = empty;
         $('#tb-dedup').disabled = empty;
@@ -5523,6 +5615,13 @@
 
     $('#tb-export').addEventListener('click', exportEditorHtml);
     $('#tb-export-json').addEventListener('click', exportEditorJson);
+    $('#tb-export-csv')?.addEventListener('click', exportEditorCsv);
+    $('#tb-export-md')?.addEventListener('click', exportEditorMarkdown);
+    $('#tb-clean-empty')?.addEventListener('click', removeEmptyFolders);
+    $('#tb-tag-manager')?.addEventListener('click', manageEditorTags);
+    $('#tb-stats-dashboard')?.addEventListener('click', showEditorInsights);
+    $('#tb-replace')?.addEventListener('click', replaceSelectedText);
+    $('#tb-ai-tag')?.addEventListener('click', autoTagSelectedBookmarks);
 
     $('#tb-undo').addEventListener('click', editorUndo);
     $('#tb-redo').addEventListener('click', editorRedo);
