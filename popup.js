@@ -60,17 +60,132 @@ async function pushHist(entry) {
 }
 
 /* ═══════════════════════════════════════════════════
-   設定の保存/読み込み
+   Reading List helpers
+   chrome.readingList API: query / addEntry / updateEntry / removeEntry
+   (旧実装が呼んでいた chrome.readingList.remove は存在しない)
+   ═══════════════════════════════════════════════════ */
+
+function rlAvailable() {
+  return !!(chrome.readingList && typeof chrome.readingList.query === 'function'
+    && typeof chrome.readingList.addEntry === 'function'
+    && typeof chrome.readingList.removeEntry === 'function');
+}
+
+function rlErrorMessage(prefix, err) {
+  const msg = err?.message || String(err || '不明なエラー');
+  console.warn(prefix, err);
+  return `${prefix}: ${msg}`;
+}
+
+// Promise / callback 両対応で lastError を吸い上げる
+function rlCall(method, arg) {
+  return new Promise((resolve, reject) => {
+    const fn = chrome.readingList?.[method];
+    if (typeof fn !== 'function') {
+      reject(new Error(`chrome.readingList.${method} が利用できません（Chrome 120+ / Reading List 有効を確認）`));
+      return;
+    }
+    try {
+      const ret = fn.call(chrome.readingList, arg, result => {
+        if (chrome.runtime?.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(result);
+        }
+      });
+      // Promise API の場合だけ resolve させる（ callback 版は二重 resolve しない）
+      if (ret && typeof ret.then === 'function') {
+        ret.then(resolve, reject);
+      }
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
+function rlQuery(info = {}) { return rlCall('query', info); }
+function rlAdd(entry) { return rlCall('addEntry', entry); }
+function rlUpdate(info) { return rlCall('updateEntry', info); }
+function rlRemove(url) { return rlCall('removeEntry', { url }); }
+
+async function getActiveHttpTab() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const url = tab?.url || '';
+  if (!/^https?:/i.test(url)) throw new Error('http/https のページで実行してください');
+  return { title: tab.title || url, url };
+}
+
+/* ═══════════════════════════════════════════════════
+   設定の保存/読み込み & キャッシュ一括ロード
    ═══════════════════════════════════════════════════ */
 
 const SETTINGS = [
   'chk-bm', 'chk-rl', 'chk-hs', 'chk-lw-hs', 'chk-csv-hs', 'chk-save-as', 'hs-limit',
-  'yt-chk-json', 'yt-chk-lw', 'yt-chk-pl', 'yt-chk-del',
-  'yt-delay', 'yt-batch', 'yt-scroll-max',
-  'yt-restore-delay', 'yt-retry',
   'cfg-notify', 'cfg-schedule', 'cfg-schedule-freq',
   'cfg-url-enabled', 'cfg-url-log', 'cfg-url-exclude'
 ];
+
+const ALL_INIT_KEYS = [
+  ...SETTINGS,
+  'lastBackupAt',
+  'urlStatsToday',
+  'cachedCounts'
+];
+
+function renderLastBackup(lastBackupAt) {
+  const target = el('last-backup');
+  if (!target) return;
+  if (!lastBackupAt) { target.textContent = '未実行'; return; }
+  const d = Date.now() - lastBackupAt;
+  const days = Math.floor(d / 86400000);
+  const hrs = Math.floor((d % 86400000) / 3600000);
+  target.textContent = days > 0 ? days + '日前' : (hrs > 0 ? hrs + '時間前' : 'たった今');
+}
+
+function renderCounts({ bm, rl, hs }) {
+  if (bm !== undefined && el('c-bm')) el('c-bm').textContent = bm.toLocaleString() + ' 件';
+  if (rl !== undefined && el('c-rl')) el('c-rl').textContent = typeof rl === 'number' ? rl.toLocaleString() + ' 件' : rl;
+  if (hs !== undefined && el('c-hs')) el('c-hs').textContent = hs;
+}
+
+async function loadInitialData() {
+  try {
+    const s = await chrome.storage.local.get(ALL_INIT_KEYS);
+
+    // 1. 各種フォーム・設定値（値が異なる場合のみ代入してDOMリフロー抑制）
+    SETTINGS.forEach(id => {
+      const e = el(id);
+      if (!e || s[id] === undefined) return;
+      if (e.type === 'checkbox') {
+        if (e.checked !== s[id]) e.checked = s[id];
+      } else {
+        if (e.value !== String(s[id])) e.value = s[id];
+      }
+    });
+
+    // 2. 前回バックアップ時刻
+    renderLastBackup(s.lastBackupAt);
+
+    // 3. 今日のURL浄化件数
+    if (el('url-today')) {
+      const today = new Date().toISOString().slice(0, 10);
+      const val = (s.urlStatsToday?.date === today ? s.urlStatsToday.count : 0).toLocaleString();
+      if (el('url-today').textContent !== val) el('url-today').textContent = val;
+    }
+
+    // 4. キャッシュされた件数を一瞬で適用（0ms表示）
+    if (s.cachedCounts) {
+      renderCounts(s.cachedCounts);
+    }
+  } catch (e) {
+    console.warn('loadInitialData:', e);
+  } finally {
+    // 最初のペイント完了後にトランジションを解禁
+    requestAnimationFrame(() => {
+      document.body.classList.remove('is-loading');
+    });
+  }
+}
 
 async function loadSettings() {
   try {
@@ -95,27 +210,29 @@ async function saveSettings() {
 }
 
 /* ═══════════════════════════════════════════════════
-   初期化
+   初期化（DOMContentLoadedを待たず即時同期実行してレスポンス最大化）
    ═══════════════════════════════════════════════════ */
 
-document.addEventListener('DOMContentLoaded', async () => {
-  await loadSettings();
+(async function init() {
+  // 1回のストレージアクセスで設定・キャッシュを即座に復元（リフロー防止）
+  await loadInitialData();
 
   // タブ切替
-  const tabIds = ['tab-1', 'tab-2', 'tab-3', 'tab-4', 'tab-5'];
-  const viewIds = ['view-1', 'view-2', 'view-3', 'view-4', 'view-5'];
+  const tabIds = ['tab-1', 'tab-2', 'tab-3', 'tab-4'];
+  const viewIds = ['view-1', 'view-2', 'view-3', 'view-4'];
   tabIds.forEach((tid, i) => {
     el(tid).addEventListener('click', async () => {
       tabIds.forEach(t => el(t).classList.remove('active'));
       viewIds.forEach(v => el(v).classList.remove('active'));
       el(tid).classList.add('active');
       el(viewIds[i]).classList.add('active');
-      if (i === 3) renderStats();
+      if (i === 2) renderStats();
+      if (i === 1) renderYtLiked();
     });
   });
 
   // アコーディオン
-  ['acc-b1', 'acc-y1', 'acc-y2'].forEach(id => {
+  ['acc-b1'].forEach(id => {
     const h = el(id);
     if (!h) return;
     h.addEventListener('click', () => {
@@ -129,25 +246,106 @@ document.addEventListener('DOMContentLoaded', async () => {
     e.addEventListener('change', saveSettings);
   });
 
-  // データカウント更新
-  await updateCounts();
-  await updateLastBackup();
+  // 初期ロード完了後、メインスレッドをブロックしないよう静かにバックグラウンド更新
+  setTimeout(() => {
+    updateCounts().catch(() => {});
+  }, 500);
 
-  // 失敗ID確認
-  checkFailed();
+  // 高評価コレクターは YT タブを開いた時にだけ読み込む (初期表示しない)
 
   // ── ボタンイベント登録 ──
   el('btn-browser-run').addEventListener('click', () => runBrowser(false));
   el('btn-browser-backup-only').addEventListener('click', () => runBrowser(true));
-  el('btn-yt-run').addEventListener('click', ytRun);
-  el('btn-yt-restore').addEventListener('click', ytRestore);
-  el('btn-retry-failed').addEventListener('click', ytRetryFailed);
+  el('btn-rl-save-current').addEventListener('click', async () => {
+    try {
+      const { title, url } = await getActiveHttpTab();
+      await rlAdd({ title, url, hasBeenRead: false });
+      setStatus('✅ Reading List に保存しました: ' + title);
+      await updateCounts();
+    } catch (e) { setStatus('❌ RL保存失敗: ' + e.message); }
+  });
+  el('btn-rl-read').addEventListener('click', async () => {
+    try {
+      const { url } = await getActiveHttpTab();
+      await rlUpdate({ url, hasBeenRead: true });
+      setStatus('✅ 既読にしました');
+      await updateCounts();
+    } catch (e) { setStatus('❌ 既読化失敗: ' + e.message); }
+  });
+  el('btn-rl-remove-current').addEventListener('click', async () => {
+    try {
+      const { url } = await getActiveHttpTab();
+      await rlRemove(url);
+      setStatus('✅ Reading List から削除しました');
+      await updateCounts();
+    } catch (e) { setStatus('❌ RL削除失敗: ' + e.message); }
+  });
+  el('btn-rl-open').addEventListener('click', async () => {
+    try {
+      if (chrome.sidePanel?.open) {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        await chrome.sidePanel.open({ windowId: tab.windowId });
+      } else {
+        setStatus('サイドパネルAPIが使えません。Chrome の Reading List (サイドパネル) を手動で開いてください');
+      }
+    } catch (e) { setStatus('サイドパネルを開けません: ' + e.message); }
+  });
+  el('btn-yt-save-current').addEventListener('click', ytSaveCurrent);
+  el('btn-yt-import').addEventListener('click', ytImport);
+
+async function ytImport() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id || !/youtube\.com/.test(tab.url || '')) {
+    setStatus('先にYouTube（または Music）の高評価リストページを開いてください');
+    return;
+  }
+  setStatus('リストを取り込み中...');
+  try {
+    const r = await new Promise((resolve, reject) => {
+      chrome.tabs.sendMessage(tab.id, { type: 'yt-collect-page' }, (resp) => {
+        if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+        resolve(resp);
+      });
+    });
+    if (!r?.ok) { setStatus('取り込み失敗: ' + (r?.error || '不明')); return; }
+    setStatus('取り込み完了: ページ ' + (r.imported || 0) + '件 / 保存済み ' + (r.total || 0) + '件');
+    renderYtLiked();
+  } catch (e) {
+    setStatus('取り込み失敗: ' + e.message + '（拡張を再読み込みしてから試してください）');
+  }
+}
+  el('btn-yt-export-json').addEventListener('click', ytExportJson);
+  el('btn-yt-export-html').addEventListener('click', ytExportHtml);
+  el('btn-yt-clear').addEventListener('click', ytClear);
   el('btn-stats-reset').addEventListener('click', resetStats);
 
   // ── スイートヘッダー ──
   el('btn-open-editor').addEventListener('click', () => {
     chrome.tabs.create({ url: chrome.runtime.getURL('index.html') });
     window.close();
+  });
+
+  // 現在の Chrome ブックマークをダウンロードせず、直接エディタへ手渡す (.htm/.html どちらでも可)
+  el('btn-open-editor-import').addEventListener('click', async () => {
+    try {
+      const tree = await chrome.bookmarks.getTree();
+      let html = '<!DOCTYPE NETSCAPE-Bookmark-file-1>\n<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">\n<TITLE>Bookmarks</TITLE>\n<H1>Bookmarks</H1>\n<DL><p>\n';
+      const proc = n => {
+        let o = '';
+        if (n.url) { o += '    <DT><A HREF="' + escapeHtml(n.url) + '">' + escapeHtml(n.title) + '</A>\n'; }
+        else if (n.children) {
+          o += '    <DT><H3>' + escapeHtml(n.title) + '</H3>\n    <DL><p>\n';
+          for (const c of n.children) o += proc(c);
+          o += '    </DL><p>\n';
+        }
+        return o;
+      };
+      if (tree[0]?.children) for (const c of tree[0].children) html += proc(c);
+      html += '</DL><p>';
+      await chrome.storage.local.set({ pendingImport: { html, at: Date.now() } });
+      await chrome.tabs.create({ url: chrome.runtime.getURL('index.html') });
+      window.close();
+    } catch (e) { setStatus('❌ エディタへ渡せません: ' + e.message); }
   });
 
   el('btn-quick-backup').addEventListener('click', async () => {
@@ -186,56 +384,58 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       const data = JSON.parse(await file.text());
       await chrome.storage.local.set(data);
-      await loadSettings();
+      await loadInitialData();
       setStatus('設定インポート完了');
     } catch (err) { setStatus('インポート失敗: ' + err.message); }
   });
-
-  // URLクリーナー統計
-  try {
-    const s = await chrome.storage.local.get('urlStatsToday');
-    const today = new Date().toISOString().slice(0, 10);
-    el('url-today').textContent = (s.urlStatsToday?.date === today ? s.urlStatsToday.count : 0).toLocaleString();
-  } catch (e) { }
-});
+})();
 
 /* ═══════════════════════════════════════════════════
    ブラウザデータ件数
    ═══════════════════════════════════════════════════ */
 
 async function updateCounts() {
-  // ブックマーク
-  const bmCount = await new Promise(r => {
-    chrome.bookmarks.getTree(tree => {
-      let c = 0;
-      const w = ns => { for (const n of ns) { if (n.url) c++; if (n.children) w(n.children); } };
-      w(tree); r(c);
-    });
-  });
-  el('c-bm').textContent = bmCount.toLocaleString() + ' 件';
-
-  // RL
-  if (chrome.readingList) {
+  try {
+    // ブックマーク件数
+    let bm = 0;
     try {
-      const rl = await chrome.readingList.query({});
-      el('c-rl').textContent = rl.length + ' 件';
-    } catch { el('c-rl').textContent = 'エラー'; }
-  } else {
-    el('c-rl').textContent = '未対応';
-  }
+      const tree = await chrome.bookmarks.getTree();
+      const w = ns => { for (const n of ns) { if (n.url) bm++; if (n.children) w(n.children); } };
+      w(tree);
+    } catch (_) {}
 
-  // 履歴
-  const hs = await new Promise(r => chrome.history.search({ text: '', maxResults: 1000 }, r));
-  el('c-hs').textContent = (hs.length >= 1000 ? '1000+' : hs.length) + ' 件';
+    // リーディングリスト件数
+    let rl = '未対応';
+    if (rlAvailable()) {
+      try {
+        const list = await rlQuery({});
+        rl = list.length;
+      } catch (e) {
+        rl = 'エラー';
+        console.warn('RL counts:', e);
+      }
+    }
+
+    // 履歴件数（負荷軽減のため上限100）
+    let hs = '0 件';
+    try {
+      const list = await new Promise(r => chrome.history.search({ text: '', maxResults: 100 }, r));
+      hs = (list.length >= 100 ? '100+' : list.length) + ' 件';
+    } catch (_) {}
+
+    const counts = { bm, rl, hs };
+    renderCounts(counts);
+
+    // 次回ポップアップ表示時に0msで描画できるようキャッシュ
+    chrome.storage.local.set({ cachedCounts: counts }).catch(() => {});
+  } catch (err) {
+    console.warn('updateCounts err:', err);
+  }
 }
 
 async function updateLastBackup() {
   const { lastBackupAt } = await chrome.storage.local.get('lastBackupAt');
-  if (!lastBackupAt) { el('last-backup').textContent = '未実行'; return; }
-  const d = Date.now() - lastBackupAt;
-  const days = Math.floor(d / 86400000);
-  const hrs = Math.floor((d % 86400000) / 3600000);
-  el('last-backup').textContent = days > 0 ? days + '日前' : hrs + '時間前';
+  renderLastBackup(lastBackupAt);
 }
 
 /* ═══════════════════════════════════════════════════
@@ -304,15 +504,19 @@ async function runBrowser(backupOnly) {
         }
       }
 
-      if (doRl && chrome.readingList) {
+      if (doRl) {
         try {
-          const rl = await chrome.readingList.query({});
+          const rl = await rlQuery({});
           if (rl.length > 0) {
             html += '    <DT><H3>Reading List</H3>\n    <DL><p>\n';
             for (const i of rl) { html += '        <DT><A HREF="' + escapeHtml(i.url) + '">' + escapeHtml(i.title) + '</A>\n'; stats.rl++; }
             html += '    </DL><p>\n';
           }
-        } catch (e) { console.warn('RL読み込みエラー:', e); }
+        } catch (e) {
+          const msg = rlErrorMessage('RL読み込みエラー', e);
+          setStatus(msg);
+          stats.rlError = msg;
+        }
       }
 
       html += '</DL><p>';
@@ -382,12 +586,28 @@ async function runBrowser(backupOnly) {
         }
       }
 
-      if (doRl && chrome.readingList) {
-        const rlItems = await chrome.readingList.query({});
-        for (let i = 0; i < rlItems.length; i += 10) {
-          const batch = rlItems.slice(i, i + 10);
-          await Promise.allSettled(batch.map(it => chrome.readingList.remove({ url: it.url })));
-          await sleep(100);
+      if (doRl) {
+        try {
+          const rlItems = await rlQuery({});
+          let removed = 0;
+          const failed = [];
+          for (let i = 0; i < rlItems.length; i += 10) {
+            const batch = rlItems.slice(i, i + 10);
+            const results = await Promise.allSettled(batch.map(it => rlRemove(it.url)));
+            results.forEach((r, idx) => {
+              if (r.status === 'fulfilled') removed += 1;
+              else failed.push(batch[idx].url + ' → ' + (r.reason?.message || r.reason));
+            });
+            await sleep(100);
+          }
+          stats.rlRemoved = removed;
+          if (failed.length) {
+            const msg = `RL削除 ${removed}件成功 / ${failed.length}件失敗: ${failed[0]}${failed.length > 1 ? ` 他${failed.length - 1}件` : ''}`;
+            console.warn(msg, failed);
+            stats.rlError = msg;
+          }
+        } catch (e) {
+          stats.rlError = rlErrorMessage('RL削除エラー', e);
         }
       }
 
@@ -399,7 +619,10 @@ async function runBrowser(backupOnly) {
     // ── 完了 ──
     showProg('prog-browser', 100, '完了');
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-    setStatus('完了 (' + elapsed + '秒) BM:' + stats.bm + ' RL:' + stats.rl + ' HS:' + stats.hs);
+    let doneMsg = '完了 (' + elapsed + '秒) BM:' + stats.bm + ' RL:' + stats.rl + ' HS:' + stats.hs;
+    if (typeof stats.rlRemoved === 'number') doneMsg += ' / RL削除:' + stats.rlRemoved + '件';
+    if (stats.rlError) doneMsg += ' / ⚠️ ' + stats.rlError;
+    setStatus(doneMsg);
 
     await updateStat('bmTotal', stats.bm);
     await updateStat('hsTotal', stats.hs);
@@ -422,110 +645,87 @@ async function runBrowser(backupOnly) {
 }
 
 /* ═══════════════════════════════════════════════════
-   YouTube 退避
+   YouTube 高評価コレクター（ポップアップ側）
+   保存実体は background が chrome.storage.local の ytLiked に持つ。
+   ポップアップは一覧表示・ファイルエクスポート・手動追加だけを担う。
    ═══════════════════════════════════════════════════ */
 
-async function ytRun() {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab || !tab.url || !tab.url.includes('youtube.com/playlist?list=LL')) {
-    setStatus('YouTube「高く評価した動画」を開いてください');
-    return;
-  }
-
-  const opts = {
-    isJson: el('yt-chk-json').checked,
-    isLw: el('yt-chk-lw').checked,
-    isPl: el('yt-chk-pl').checked,
-    isDelete: el('yt-chk-del').checked,
-    delay: parseInt(el('yt-delay').value) || 400,
-    batchSize: parseInt(el('yt-batch').value) || 50,
-    scrollMax: parseInt(el('yt-scroll-max').value) || 300
-  };
-
-  if (!opts.isJson && !opts.isLw && !opts.isPl && !opts.isDelete) {
-    setStatus('1つ以上選択してください');
-    return;
-  }
-  if (opts.isDelete && !confirm('高評価を取り消します。よろしいですか？')) return;
-
-  setStatus('YouTubeスクリプト実行中...\nページ上のパネルで進捗を確認できます');
-
-  chrome.scripting.executeScript({
-    target: { tabId: tab.id },
-    func: ytManagerScript,
-    args: [opts],
-    world: 'MAIN'
-  }, () => {
-    if (chrome.runtime.lastError) {
-      setStatus('エラー: ' + chrome.runtime.lastError.message);
-    } else {
-      updateStat('ytBackup');
-      pushHist({ type: 'yt-backup' });
-    }
-  });
+async function ytList() {
+  const r = await chrome.runtime.sendMessage({ type: 'yt-list' });
+  return r?.videos || [];
 }
 
-/* ═══════════════════════════════════════════════════
-   YouTube 復元
-   ═══════════════════════════════════════════════════ */
-
-async function checkFailed() {
-  const { failedIds } = await chrome.storage.local.get('failedIds');
-  if (failedIds && failedIds.length > 0) {
-    el('failed-info').textContent = '前回失敗: ' + failedIds.length + '件';
-    el('failed-info').style.display = 'block';
-    el('btn-retry-failed').style.display = 'block';
-  } else {
-    el('failed-info').style.display = 'none';
-    el('btn-retry-failed').style.display = 'none';
-  }
-}
-
-async function ytRestore() {
-  const file = el('yt-file-restore').files[0];
-  if (!file) { setStatus('JSONを選択してください'); return; }
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab || !tab.url || !tab.url.includes('youtube.com/')) {
-    setStatus('YouTubeのページを開いてください');
-    return;
-  }
+async function renderYtLiked() {
+  const listEl = el('yt-list');
+  const countEl = el('yt-count');
+  if (!listEl) return;
   try {
-    const data = JSON.parse(await file.text());
-    const videos = data.videos || data.youtubeHistory || data.items || [];
-    let ids = videos
-      .map(v => v.id || (v.url ? new URL(v.url).searchParams.get('v') : null))
-      .filter(Boolean);
-    ids = [...new Set(ids)];
-    if (!ids.length) throw new Error('動画IDなし');
-    if (!confirm(ids.length + '件を再評価しますか？')) return;
-    execRelike(ids, tab.id);
-  } catch (e) { setStatus('エラー: ' + e.message); }
+    const videos = await ytList();
+    if (countEl) countEl.textContent = videos.length.toLocaleString() + ' 件';
+    if (!videos.length) {
+      listEl.innerHTML = '<p class="note">なし（YouTubeで動画に「いいね」を付けると自動で保存されます）</p>';
+      return;
+    }
+    listEl.innerHTML = videos.slice(-50).reverse().map(v => {
+      const date = v.likedAt ? new Date(v.likedAt).toLocaleString() : '';
+      return '<div style="padding:3px 0;border-bottom:1px solid var(--bdr);">' +
+        '<a href="' + escapeHtml(v.url) + '" target="_blank" rel="noopener" style="color:var(--accent);">' + escapeHtml(v.title || v.id) + '</a>' +
+        (v.channel ? '<br><span style="font-size:10px;color:var(--sub);">' + escapeHtml(v.channel) + '</span>' : '') +
+        (date ? '<br><span style="font-size:10px;color:var(--sub);">' + date + '</span>' : '') + '</div>';
+    }).join('');
+  } catch (e) {
+    listEl.innerHTML = '<p class="note">読み込み失敗: ' + escapeHtml(e.message) + '</p>';
+  }
 }
 
-async function ytRetryFailed() {
+async function ytSaveCurrent() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab || !tab.url || !tab.url.includes('youtube.com/')) { setStatus('YouTubeを開いてください'); return; }
-  const { failedIds } = await chrome.storage.local.get('failedIds');
-  if (!failedIds || !failedIds.length) { setStatus('失敗IDなし'); return; }
-  if (!confirm(failedIds.length + '件を再試行？')) return;
-  execRelike(failedIds, tab.id);
+  const url = tab?.url || '';
+  const m = url.match(/[?&]v=([\w-]{6,20})/);
+  if (!m) { setStatus('YouTubeの動画ページを開いてください'); return; }
+  const id = m[1];
+  const r = await chrome.runtime.sendMessage({
+    type: 'yt-liked',
+    video: { id, title: tab.title || id, channel: '', url: 'https://www.youtube.com/watch?v=' + id, likedAt: Date.now() }
+  });
+  setStatus(r?.ok ? '保存しました（' + (r.count || 0) + '件）' : '保存に失敗しました');
+  renderYtLiked();
 }
 
-function execRelike(ids, tabId) {
-  const delay = parseInt(el('yt-restore-delay').value) || 400;
-  const maxRetries = parseInt(el('yt-retry').value) || 3;
-  setStatus(ids.length + '件の再評価を開始...');
+function ytDownload(filename, content, type) {
+  const a = document.createElement('a');
+  const url = createBlob(content, type);
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
+}
 
-  chrome.scripting.executeScript({
-    target: { tabId },
-    func: ytRelikerScript,
-    args: [ids, delay, maxRetries],
-    world: 'MAIN'
-  }, () => {
-    if (chrome.runtime.lastError) setStatus('エラー: ' + chrome.runtime.lastError.message);
-    else { updateStat('ytRestore'); pushHist({ type: 'yt-restore', count: ids.length }); }
-    setTimeout(checkFailed, 3000);
-  });
+async function ytExportJson() {
+  const videos = await ytList();
+  if (!videos.length) { setStatus('保存データがありません'); return; }
+  ytDownload('youtube_liked_' + new Date().toISOString().slice(0, 10) + '.json',
+    JSON.stringify({ exportedAt: new Date().toLocaleString(), count: videos.length, videos }, null, 2),
+    'application/json');
+  setStatus('JSONを保存しました（' + videos.length + '件）');
+}
+
+async function ytExportHtml() {
+  const videos = await ytList();
+  if (!videos.length) { setStatus('保存データがありません'); return; }
+  let h = '<!DOCTYPE NETSCAPE-Bookmark-file-1>\n<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">\n<TITLE>Bookmarks</TITLE>\n<H1>Bookmarks</H1>\n<DL><p>\n';
+  h += '    <DT><H3>YouTube Liked (' + new Date().toISOString().slice(0, 10) + ')</H3>\n    <DL><p>\n';
+  for (const v of videos) h += '        <DT><A HREF="' + escapeHtml(v.url) + '" ADD_DATE="' + Math.floor((v.likedAt || Date.now()) / 1000) + '">' + escapeHtml(v.title || v.id) + '</A>\n';
+  h += '    </DL><p>\n</DL><p>';
+  ytDownload('youtube_liked_' + new Date().toISOString().slice(0, 10) + '.html', h, 'text/html');
+  setStatus('HTMLを保存しました（' + videos.length + '件）');
+}
+
+async function ytClear() {
+  if (!confirm('保存済みの高評価データをすべて削除しますか？')) return;
+  await chrome.runtime.sendMessage({ type: 'yt-clear' });
+  setStatus('削除しました');
+  renderYtLiked();
 }
 
 /* ═══════════════════════════════════════════════════
@@ -537,8 +737,7 @@ async function renderStats() {
   const s = stats || {};
   el('stat-bm-total').textContent = (s.bmTotal || 0).toLocaleString();
   el('stat-hs-total').textContent = (s.hsTotal || 0).toLocaleString();
-  el('stat-yt-backup').textContent = (s.ytBackup || 0).toLocaleString();
-  el('stat-yt-restore').textContent = (s.ytRestore || 0).toLocaleString();
+  el('stat-yt-collected').textContent = (s.ytCollected || 0).toLocaleString();
   el('stat-url-cleaned').textContent = (s.urlCleaned || 0).toLocaleString();
   el('stat-runs').textContent = (s.runs || 0).toLocaleString();
 
@@ -560,376 +759,4 @@ async function resetStats() {
   await chrome.storage.local.remove(['stats', 'runHistory']);
   renderStats();
   setStatus('統計リセット完了');
-}
-
-/* ═══════════════════════════════════════════════════
-   YouTube注入スクリプト: 高評価バックアップ
-   ═══════════════════════════════════════════════════ */
-
-async function ytManagerScript(opts) {
-  const { isJson, isLw, isPl, isDelete, delay, batchSize, scrollMax } = opts;
-
-  // ─── UIパネル作成 ───
-  const panel = (() => {
-    let box = document.getElementById('yt-ext-log');
-    if (box) { box.remove(); }
-    box = document.createElement('div');
-    box.id = 'yt-ext-log';
-    box.style.cssText = 'position:fixed;bottom:16px;right:16px;width:400px;max-height:400px;background:rgba(10,10,20,.97);color:#0f8;padding:12px;font-size:12px;overflow-y:auto;z-index:99999;border-radius:10px;font-family:monospace;line-height:1.5;box-shadow:0 4px 20px rgba(0,0,0,.5);border:1px solid #0f8;';
-    box.innerHTML = '<div style="display:flex;justify-content:space-between;margin-bottom:8px;"><b>📺 YT Backup</b><button id="yt-ext-close" style="background:none;border:none;color:#888;cursor:pointer;font-size:14px;">✕</button></div>' +
-      '<div style="width:100%;height:6px;background:#222;border-radius:3px;overflow:hidden;"><div id="yt-ext-prog" style="height:100%;width:0;background:linear-gradient(90deg,#0f8,#0bf);transition:width .3s;"></div></div>' +
-      '<div id="yt-ext-ptext" style="font-size:10px;color:#aaa;text-align:center;margin:4px 0 8px;"></div>' +
-      '<div id="yt-ext-area" style="max-height:260px;overflow-y:auto;"></div>';
-    document.body.appendChild(box);
-    document.getElementById('yt-ext-close').onclick = () => box.remove();
-    return box;
-  })();
-
-  function log(msg) {
-    console.log('[YT]', msg);
-    const area = document.getElementById('yt-ext-area');
-    if (!area) return;
-    const d = document.createElement('div');
-    d.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
-    area.appendChild(d);
-    area.scrollTop = area.scrollHeight;
-    while (area.children.length > 200) area.removeChild(area.firstChild);
-  }
-
-  function prog(c, t, label) {
-    const bar = document.getElementById('yt-ext-prog');
-    const txt = document.getElementById('yt-ext-ptext');
-    if (bar) bar.style.width = (c / t * 100) + '%';
-    if (txt) txt.textContent = label || (c + '/' + t);
-  }
-
-  function esc(s) { return s ? s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;') : ''; }
-
-  async function fetchRetry(url, opts, maxR) {
-    maxR = maxR || 3;
-    for (let a = 0; a <= maxR; a++) {
-      try {
-        const r = await fetch(url, opts);
-        if (r.status === 429) {
-          const w = parseInt(r.headers.get('Retry-After') || '5') * 1000;
-          log('⏳ Rate limit ' + (w / 1000) + 's');
-          await new Promise(x => setTimeout(x, w));
-          continue;
-        }
-        if (r.status >= 500 && a < maxR) {
-          await new Promise(x => setTimeout(x, 1000 * Math.pow(2, a)));
-          continue;
-        }
-        return r;
-      } catch (e) {
-        if (a >= maxR) throw e;
-        await new Promise(x => setTimeout(x, 1000 * Math.pow(2, a)));
-      }
-    }
-    throw new Error('リトライ上限');
-  }
-
-  try {
-    log('🚀 開始');
-
-    if (!window.ytcfg || !window.ytcfg.data_) throw new Error('ytcfgなし。リロードしてください');
-    const cfg = window.ytcfg.data_;
-    const apiKey = cfg.INNERTUBE_API_KEY || null;
-    const ctx = cfg.INNERTUBE_CONTEXT;
-    const au = cfg.SESSION_INDEX || '0';
-    const cv = cfg.INNERTUBE_CLIENT_VERSION || '2.0';
-
-    function mkUrl(path) {
-      let u = 'https://www.youtube.com/youtubei/v1/' + path + '?prettyPrint=false';
-      if (apiKey) u += '&key=' + apiKey;
-      return u;
-    }
-
-    // 認証ヘッダー
-    let hdrCache = null, hdrTs = 0;
-    async function getHeaders(force) {
-      const now = Math.floor(Date.now() / 1000);
-      if (!force && hdrCache && (now - hdrTs) < 30) return hdrCache;
-      const m = document.cookie.match(/SAPISID=([^;]+)/);
-      if (!m) throw new Error('SAPISIDなし。ログインしてください');
-      const sap = decodeURIComponent(m[1]);
-      const origin = window.location.origin;
-      const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(now + ' ' + sap + ' ' + origin));
-      const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
-      hdrCache = {
-        'Authorization': 'SAPISIDHASH ' + now + '_' + hash,
-        'X-Origin': origin, 'X-Goog-AuthUser': au,
-        'X-YouTube-Client-Name': '1', 'X-YouTube-Client-Version': cv,
-        'Content-Type': 'application/json'
-      };
-      hdrTs = now;
-      return hdrCache;
-    }
-
-    // スクロール収集
-    log('🔍 スクロール収集');
-    const vm = new Map();
-    let nc = 0;
-    for (let i = 0; i < scrollMax; i++) {
-      window.scrollTo(0, document.documentElement.scrollHeight);
-      await new Promise(r => setTimeout(r, 800));
-      if (document.querySelector('ytd-continuation-item-renderer, tp-yt-paper-spinner-lite')) {
-        await new Promise(r => setTimeout(r, 1500));
-      }
-      const links = document.querySelectorAll(
-        'ytd-playlist-video-renderer a#video-title[href*="watch"],' +
-        'a#video-title[href*="watch?v="]'
-      );
-      const ps = vm.size;
-      for (const a of links) {
-        try {
-          const url = new URL(a.href, location.origin);
-          const v = url.searchParams.get('v');
-          if (v && !vm.has(v)) {
-            vm.set(v, { id: v, title: (a.title || a.textContent || '').trim() || 'Unknown', url: 'https://www.youtube.com/watch?v=' + v });
-          }
-        } catch (e) { }
-      }
-      prog(vm.size, 5000, '収集: ' + vm.size + '件');
-      if (vm.size === ps) { nc++; if (nc >= 5) { log('✅ 終端'); break; } } else nc = 0;
-      if (vm.size >= 5000) { log('ℹ️ 5000上限'); break; }
-    }
-
-    const videos = Array.from(vm.values());
-    if (!videos.length) throw new Error('動画なし');
-    log('📊 ' + videos.length + '件取得');
-
-    const headers = await getHeaders();
-    const ds = new Date().toISOString().slice(0, 10);
-    let errorCount = 0;
-
-    // JSONダウンロード
-    if (isJson) {
-      log('📄 JSON作成...');
-      const data = JSON.stringify({ exportedAt: new Date().toLocaleString(), count: videos.length, videos: videos }, null, 2);
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
-      a.download = 'liked_videos_' + ds + '.json';
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      URL.revokeObjectURL(a.href);
-      log('✅ JSON完了');
-      await new Promise(r => setTimeout(r, 500));
-    }
-
-    // Linkwarden HTML
-    if (isLw) {
-      log('📄 LW HTML作成...');
-      let h = '<!DOCTYPE NETSCAPE-Bookmark-file-1>\n<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">\n<TITLE>Bookmarks</TITLE>\n<H1>Bookmarks</H1>\n<DL><p>\n';
-      h += '    <DT><H3>YouTube Liked Videos (' + ds + ')</H3>\n    <DL><p>\n';
-      for (const v of videos) h += '        <DT><A HREF="' + esc(v.url) + '">' + esc(v.title) + '</A>\n';
-      h += '    </DL><p>\n</DL><p>';
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([h], { type: 'text/html' }));
-      a.download = 'liked_videos_lw_' + ds + '.html';
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      URL.revokeObjectURL(a.href);
-      log('✅ LW HTML完了');
-      await new Promise(r => setTimeout(r, 500));
-    }
-
-    // プレイリスト作成
-    if (isPl) {
-      const plTitle = 'Liked Backup ' + ds;
-      log('📺 PL作成: ' + plTitle);
-      const cr = await fetchRetry(mkUrl('playlist/create'), {
-        method: 'POST', headers: headers,
-        body: JSON.stringify({ context: ctx, title: plTitle, privacyStatus: 'PRIVATE' })
-      });
-      const cj = await cr.json();
-      if (!cj.playlistId) throw new Error('PL作成失敗');
-      const plId = cj.playlistId;
-      log('✅ PL作成 ID:' + plId);
-
-      for (let i = 0; i < videos.length; i += batchSize) {
-        const chunk = videos.slice(i, i + batchSize);
-        const actions = chunk.map(v => ({ action: 'ACTION_ADD_VIDEO', addedVideoId: v.id }));
-        try {
-          const r = await fetchRetry(mkUrl('browse/edit_playlist'), {
-            method: 'POST', headers: headers,
-            body: JSON.stringify({ context: ctx, playlistId: plId, actions: actions })
-          });
-          if (!r.ok) { log('⚠️ Chunk失敗'); errorCount++; }
-        } catch (e) { log('⚠️ Chunkエラー: ' + e.message); errorCount++; }
-        prog(Math.min(i + batchSize, videos.length), videos.length, 'PL: ' + Math.min(i + batchSize, videos.length) + '/' + videos.length);
-        await new Promise(r => setTimeout(r, delay));
-      }
-      log('✅ PL追加完了');
-    }
-
-    // 高評価取り消し
-    if (isDelete) {
-      if (errorCount > 0 && !confirm(errorCount + '件のエラーがありました。削除を続行しますか？')) {
-        log('⛔ 中止');
-        return;
-      }
-      log('🗑️ 取り消し開始');
-      let ok = 0, ng = 0;
-      for (let i = 0; i < videos.length; i++) {
-        if (i % 50 === 0 && i > 0) {
-          try { await getHeaders(true); } catch (e) { log('⚠️ header更新失敗'); }
-        }
-        try {
-          const r = await fetchRetry(mkUrl('like/removelike'), {
-            method: 'POST', headers: headers,
-            body: JSON.stringify({ context: ctx, target: { videoId: videos[i].id } })
-          });
-          if (r.ok) ok++; else ng++;
-        } catch (e) { ng++; }
-        if ((i + 1) % 20 === 0 || i === videos.length - 1) {
-          prog(i + 1, videos.length, '削除: ' + (i + 1) + '/' + videos.length + ' ✓' + ok);
-        }
-        await new Promise(r => setTimeout(r, delay));
-      }
-      log('🎉 完了 成功=' + ok + ' 失敗=' + ng);
-      alert('完了!\n成功: ' + ok + '\n失敗: ' + ng + '\nリロードで隠れた動画が出現');
-    } else {
-      log('🎉 全処理完了');
-    }
-  } catch (e) {
-    log('❌ ' + e.message);
-    console.error('[YT-Ext]', e);
-  }
-}
-
-/* ═══════════════════════════════════════════════════
-   YouTube注入スクリプト: 再評価
-   ═══════════════════════════════════════════════════ */
-
-async function ytRelikerScript(videoIds, delay, maxRetries) {
-  // UIパネル
-  let box = document.getElementById('yt-ext-log');
-  if (box) box.remove();
-  box = document.createElement('div');
-  box.id = 'yt-ext-log';
-  box.style.cssText = 'position:fixed;bottom:16px;right:16px;width:400px;max-height:400px;background:rgba(0,30,10,.97);color:#af8;padding:12px;font-size:12px;overflow-y:auto;z-index:99999;border-radius:10px;font-family:monospace;line-height:1.5;box-shadow:0 4px 20px rgba(0,0,0,.5);border:1px solid #af8;';
-  box.innerHTML = '<div style="display:flex;justify-content:space-between;margin-bottom:8px;"><b>❤️ YT Restore</b><button id="yt-ext-close" style="background:none;border:none;color:#888;cursor:pointer;font-size:14px;">✕</button></div>' +
-    '<div style="width:100%;height:6px;background:#222;border-radius:3px;overflow:hidden;"><div id="yt-ext-prog" style="height:100%;width:0;background:linear-gradient(90deg,#af8,#8fc);transition:width .3s;"></div></div>' +
-    '<div id="yt-ext-ptext" style="font-size:10px;color:#aaa;text-align:center;margin:4px 0 8px;"></div>' +
-    '<div id="yt-ext-area" style="max-height:260px;overflow-y:auto;"></div>';
-  document.body.appendChild(box);
-  document.getElementById('yt-ext-close').onclick = () => box.remove();
-
-  function log(msg) {
-    console.log('[Reliker]', msg);
-    const area = document.getElementById('yt-ext-area');
-    if (!area) return;
-    const d = document.createElement('div');
-    d.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
-    area.appendChild(d);
-    area.scrollTop = area.scrollHeight;
-    while (area.children.length > 200) area.removeChild(area.firstChild);
-  }
-
-  function prog(c, t, l) {
-    const bar = document.getElementById('yt-ext-prog');
-    const txt = document.getElementById('yt-ext-ptext');
-    if (bar) bar.style.width = (c / t * 100) + '%';
-    if (txt) txt.textContent = l || (c + '/' + t);
-  }
-
-  async function fetchRetry(url, opts, retries) {
-    for (let a = 0; a <= retries; a++) {
-      try {
-        const r = await fetch(url, opts);
-        if (r.status === 429) {
-          const w = parseInt(r.headers.get('Retry-After') || '10') * 1000;
-          log('⏳ 429 ' + (w / 1000) + 's');
-          await new Promise(x => setTimeout(x, w));
-          continue;
-        }
-        if (r.status >= 500 && a < retries) {
-          await new Promise(x => setTimeout(x, 1000 * Math.pow(2, a)));
-          continue;
-        }
-        return r;
-      } catch (e) {
-        if (a >= retries) throw e;
-        await new Promise(x => setTimeout(x, 1000 * Math.pow(2, a)));
-      }
-    }
-    throw new Error('リトライ上限');
-  }
-
-  try {
-    log('🚀 復元 ' + videoIds.length + '件');
-    if (!window.ytcfg || !window.ytcfg.data_) throw new Error('ytcfgなし');
-
-    const cfg = window.ytcfg.data_;
-    const apiKey = cfg.INNERTUBE_API_KEY || null;
-    const ctx = cfg.INNERTUBE_CONTEXT;
-    const au = cfg.SESSION_INDEX || '0';
-    const cv = cfg.INNERTUBE_CLIENT_VERSION || '2.0';
-
-    function mkUrl(path) {
-      let u = 'https://www.youtube.com/youtubei/v1/' + path + '?prettyPrint=false';
-      if (apiKey) u += '&key=' + apiKey;
-      return u;
-    }
-
-    let hdr = null, hts = 0;
-    async function gH(force) {
-      const now = Math.floor(Date.now() / 1000);
-      if (!force && hdr && (now - hts) < 30) return hdr;
-      const m = document.cookie.match(/SAPISID=([^;]+)/);
-      if (!m) throw new Error('SAPISIDなし');
-      const sap = decodeURIComponent(m[1]);
-      const origin = window.location.origin;
-      const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(now + ' ' + sap + ' ' + origin));
-      const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
-      hdr = {
-        'Authorization': 'SAPISIDHASH ' + now + '_' + hash,
-        'X-Origin': origin, 'X-Goog-AuthUser': au,
-        'X-YouTube-Client-Name': '1', 'X-YouTube-Client-Version': cv,
-        'Content-Type': 'application/json'
-      };
-      hts = now;
-      return hdr;
-    }
-
-    let headers = await gH();
-    let ok = 0, ng = 0;
-    const failed = [];
-    const processed = [];
-
-    for (let i = 0; i < videoIds.length; i++) {
-      if (i % 30 === 0 && i > 0) {
-        headers = await gH(true);
-        log('🔑 header更新');
-      }
-      try {
-        const r = await fetchRetry(mkUrl('like/like'), {
-          method: 'POST', headers: headers,
-          body: JSON.stringify({ context: ctx, target: { videoId: videoIds[i] } })
-        }, maxRetries);
-        if (r.ok) { ok++; processed.push(videoIds[i]); }
-        else { ng++; failed.push(videoIds[i]); if (ng <= 10) log('⚠️ HTTP ' + r.status + ': ' + videoIds[i]); }
-      } catch (e) {
-        ng++; failed.push(videoIds[i]);
-        log('⚠️ ' + videoIds[i] + ': ' + e.message);
-      }
-      if ((i + 1) % 10 === 0 || i === videoIds.length - 1) {
-        prog(i + 1, videoIds.length, (i + 1) + '/' + videoIds.length + ' ✓' + ok + ' ✗' + ng);
-      }
-      await new Promise(r => setTimeout(r, delay));
-    }
-
-    log('🎉 完了 ✓' + ok + ' ✗' + ng);
-
-    // 結果をストレージに保存
-    try {
-      if (failed.length) chrome.storage.local.set({ failedIds: failed });
-      else chrome.storage.local.remove('failedIds');
-      chrome.storage.local.set({ processedIds: processed });
-    } catch (e) { }
-
-    alert('完了!\n成功: ' + ok + '\n失敗: ' + ng);
-  } catch (e) {
-    log('❌ ' + e.message);
-    console.error('[Reliker]', e);
-  }
 }

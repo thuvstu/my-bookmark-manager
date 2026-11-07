@@ -10,6 +10,7 @@
     const api = window.BookmarkSuite;
 
     if (!api || !chrome?.bookmarks?.getTree || !chrome?.downloads) {
+        document.getElementById('bs-banner')?.remove();
         return;
     }
 
@@ -37,10 +38,10 @@
     bridgeGroup.className = 'tb-group';
     bridgeGroup.innerHTML =
         '<button type="button" class="tb-btn tb-primary" id="bs-load-browser" ' +
-        'title="Chromeのブックマークをエディタに読み込みます">🌐 ブラウザから読み込み</button>' +
+        'title="Chromeの最新ブックマークを再読み込みします">🌐 再読込</button>' +
         '<button type="button" class="tb-btn" id="bs-save-browser" disabled ' +
         'title="エディタの内容でブラウザのブックマークを上書きします（自動バックアップ付き）">' +
-        '☁️ ブラウザへ書き戻す</button>';
+        '☁️ ブラウザに保存</button>';
 
     const bridgeSeparator = document.createElement('div');
     bridgeSeparator.className = 'tb-sep';
@@ -55,15 +56,15 @@
 
     const bookmarksCall = (method, args) =>
         new Promise((resolve, reject) => {
-            chrome.bookmarks[method](args, result => {
+            const cb = result => {
                 const error = chrome.runtime.lastError;
-
-                if (error) {
-                    reject(new Error(error.message));
-                } else {
-                    resolve(result);
-                }
-            });
+                if (error) reject(new Error(error.message));
+                else resolve(result);
+            };
+            // getTree は引数なしが正しいシグネチャ。undefined を渡すと
+            // "No matching signature" になるので引数なしで呼ぶ
+            if (args === undefined) chrome.bookmarks[method](cb);
+            else chrome.bookmarks[method](args, cb);
         });
 
     const getBrowserTree = async () =>
@@ -332,5 +333,98 @@
     loadButton.addEventListener('click', loadFromBrowser);
     saveButton.addEventListener('click', saveToBrowser);
 
-    api.setStatus('🌐 拡張連携が有効です。「ブラウザから読み込み」で開始できます');
+    api.setStatus('🌐 拡張連携が有効です。ブラウザのブックマークを自動で読み込みます…');
+
+    // ── マージ最適化を即適用 ──────────────────────────────────────
+    const btnGroup = document.querySelector('#m-result .btn-group');
+    if (btnGroup && !document.getElementById('m-apply-browser')) {
+        const applyBtn = document.createElement('button');
+        applyBtn.type = 'button';
+        applyBtn.id = 'm-apply-browser';
+        applyBtn.className = 'dl-btn btn-blue';
+        applyBtn.textContent = '☁️ ブラウザへ即適用';
+        applyBtn.disabled = true;
+        btnGroup.appendChild(applyBtn);
+
+        const origToEditor = document.getElementById('m-to-editor');
+
+        // マージ結果が出たら即適用ボタンを有効化 (app.js 側の有効化に追随)
+        // setInterval は重くなるので使わず、MutationObserver のみで追随する
+        let syncQueued = false;
+        const syncApplyBtn = () => {
+            if (syncQueued) return;
+            syncQueued = true;
+            requestAnimationFrame(() => {
+                syncQueued = false;
+                applyBtn.disabled = !api.getMergerCount();
+                if (origToEditor) origToEditor.disabled = applyBtn.disabled;
+            });
+        };
+        new MutationObserver(syncApplyBtn).observe(origToEditor || btnGroup, { attributes: true, attributeFilter: ['disabled'] });
+        syncApplyBtn();
+
+        applyBtn.addEventListener('click', async () => {
+            const items = api.getMergerItems();
+            if (!items.length) return;
+            const confirmed = await api.confirm(
+                `マージ結果 ${items.length}件を「その他のブックマーク」にドメイン別フォルダで追加します。\n※ 既存のブックマークは削除しません (追加のみ)。\n※ 事前に HTML バックアップを自動ダウンロードします。`,
+                { title: '☁️ ブウザへ即適用', danger: true, okLabel: 'バックアップして追加' }
+            );
+            if (!confirmed) return;
+            applyBtn.disabled = true;
+            try {
+                api.setStatus('💾 自動バックアップを保存中...');
+                await downloadBackup(buildNetscapeBackup(await getBrowserTree()));
+
+                const groups = new Map();
+                for (const it of items) {
+                    if (!groups.has(it.hostname)) groups.set(it.hostname, []);
+                    groups.get(it.hostname).push(it);
+                }
+                let count = 0;
+                for (const [hostname, list] of groups) {
+                    const folder = await bookmarksCall('create', { parentId: '2', title: hostname });
+                    for (const it of list) {
+                        await bookmarksCall('create', { parentId: folder.id, title: it.title || it.url, url: it.url });
+                        count += 1;
+                        if (count % 40 === 0) api.setStatus(`☁️ 追加中... ${count.toLocaleString()}件`);
+                    }
+                }
+                api.toast(`ブラウザへ ${count.toLocaleString()}件 追加しました`, 'ok');
+                api.setStatus(`✅ 即適用完了（${count.toLocaleString()}件）`);
+                await new Promise(r => setTimeout(r, 500));
+            } catch (e) {
+                api.toast('追加失敗: ' + e.message, 'err');
+            } finally {
+                syncApplyBtn();
+            }
+        });
+    }
+
+    // ポップアップから渡された pendingImport を受け取り、ファイル経由なしでエディタに開く
+    // (.htm/.html 両対応、Netscape 形式なら拡張子は関係なし)
+    // pendingImport がない場合は Chrome のブックマークマネージャ (Ctrl+Shift+O) 代わりとして
+    // 現在のブックマークを自動ロードし、このエディタを実質デフォルトのマネージャにする
+    chrome.storage.local.get('pendingImport', ({ pendingImport }) => {
+        if (pendingImport?.html) {
+            try {
+                api.loadEditorHtml(pendingImport.html);
+                api.showEditor();
+                api.toast('ポップアップから直接取り込みました', 'ok');
+                api.setStatus('✅ ポップアップから取り込み完了');
+            } catch (e) {
+                api.toast('取り込み失敗: ' + e.message, 'err');
+            } finally {
+                chrome.storage.local.remove('pendingImport');
+            }
+            return;
+        }
+        // 非拡張 (GitHub Pages 等) では chrome.bookmarks が使えないので自動ロードしない
+        // 起動直後の自動ロードは大規模ブックマークで重いので、空の時だけ 1回だけ
+        if (typeof chrome.bookmarks?.getTree === 'function' && !api.getTree()?.length) {
+            requestIdleCallback(() => {
+                loadFromBrowser().catch(() => {});
+            }, { timeout: 2000 });
+        }
+    });
 })();

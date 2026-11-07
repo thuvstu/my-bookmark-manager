@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Bookmark Suite",
   "version": "5.0.0",
-  "description": "ブックマーク統合スイート: フルエディタ / マージ・最適化、バックアップ掃除、YouTube管理、URL浄化",
+  "description": "ブックマーク統合スイート: フルエディタ / マージ・最適化、バックアップ掃除、YouTube高評価コレクター、URL浄化",
   "minimum_chrome_version": "120",
   "icons": {
     "16": "icons/icon16.png",
@@ -33,10 +33,10 @@
     "downloads",
     "activeTab",
     "tabs",
-    "scripting",
     "storage",
     "notifications",
-    "alarms"
+    "alarms",
+    "sidePanel"
   ],
   "content_scripts": [
     {
@@ -47,6 +47,17 @@
         "url-cleaner.js"
       ],
       "run_at": "document_start",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "*://www.youtube.com/*",
+        "*://music.youtube.com/*"
+      ],
+      "js": [
+        "yt-collector.js"
+      ],
+      "run_at": "document_idle",
       "all_frames": false
     }
   ],

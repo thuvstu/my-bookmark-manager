@@ -553,11 +553,18 @@
     // Application settings
     // ═══════════════════════════════════════════════════════════════
 
+    // 環境適応: reduced-motion / reduced-data ではアニメ・プレビューを自動で止めて省エネ順化
+    const reducedData = matchMedia('(prefers-reduced-data: reduce)').matches;
+    const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
     const settings = {
-        faviconEnabled: localStorage.getItem('bmt_favicon') !== 'off',
-        autoPreview: localStorage.getItem('bmt_auto_preview') !== 'off',
+        faviconEnabled: reducedData ? false : localStorage.getItem('bmt_favicon') !== 'off',
+        autoPreview: reducedData || reducedMotion ? false : localStorage.getItem('bmt_auto_preview') !== 'off',
         previewScripts: localStorage.getItem('bmt_preview_scripts') === 'on'
     };
+
+    // 省エネ順化: reduced-motion 時は CSS アニメーションを無効化
+    if (reducedMotion) document.documentElement.style.setProperty('--transition-none','none');
 
     function persistSetting(key) {
         const storageMap = {
@@ -699,19 +706,20 @@
     const mergerDropZone = $('#m-drop');
     const mergerFileInput = $('#m-file-input');
 
-    mergerDropZone.addEventListener('click', () => mergerFileInput.click());
+    // マージタブ削除後は DOM が無いので null ガード (import 時は mergerMap 再利用)
+    mergerDropZone?.addEventListener('click', () => mergerFileInput.click());
 
-    mergerDropZone.addEventListener('dragover', event => {
+    mergerDropZone?.addEventListener('dragover', event => {
         event.preventDefault();
         event.stopPropagation();
         mergerDropZone.classList.add('dragover');
     });
 
-    mergerDropZone.addEventListener('dragleave', () => {
+    mergerDropZone?.addEventListener('dragleave', () => {
         mergerDropZone.classList.remove('dragover');
     });
 
-    mergerDropZone.addEventListener('drop', event => {
+    mergerDropZone?.addEventListener('drop', event => {
         event.preventDefault();
         event.stopPropagation();
 
@@ -719,7 +727,7 @@
         loadMergerFiles(event.dataTransfer.files);
     });
 
-    mergerFileInput.addEventListener('change', event => {
+    mergerFileInput?.addEventListener('change', event => {
         loadMergerFiles(event.target.files);
         event.target.value = '';
     });
@@ -748,7 +756,9 @@
     }
 
     function renderMergerChips() {
-        $('#m-chips').innerHTML =
+        const chips = $('#m-chips');
+        if (!chips) return;
+        chips.innerHTML =
             mergerFiles.map((file, index) =>
                 `<span class="file-chip">📄 ${escapeHtml(file.name)}` +
                 `<button type="button" class="chip-x" data-index="${index}" ` +
@@ -769,9 +779,11 @@
         const logBox = $('#m-log');
 
         if (!mergerFiles.length) {
-            resultCard.style.display = 'none';
+            if (resultCard) resultCard.style.display = 'none';
             return;
         }
+
+        if (!resultCard || !logBox) return;
 
         resultCard.style.display = 'block';
         logBox.textContent = '📂 読み込み中...\n';
@@ -848,7 +860,7 @@
         }
     }
 
-    $('#m-chips').addEventListener('click', async event => {
+    $('#m-chips')?.addEventListener('click', async event => {
         const removeButton = event.target.closest('.chip-x');
         const clearButton = event.target.closest('.chip-clear');
 
@@ -913,14 +925,14 @@
             `💾 DL完了 (${bookmarks.length.toLocaleString()}件)\n`;
     }
 
-    $('#m-dl-merge').addEventListener('click', () => {
+    $('#m-dl-merge')?.addEventListener('click', () => {
         const bookmarks = [...mergerMap.values()]
             .sort((a, b) => a.hostname.localeCompare(b.hostname));
 
         downloadMergerHtml(bookmarks, 'merged');
     });
 
-    $('#m-dl-diff').addEventListener('click', () => {
+    $('#m-dl-diff')?.addEventListener('click', () => {
         const bookmarks = [...mergerMap.values()]
             .filter(item => item.files.size === 1)
             .sort((a, b) => a.hostname.localeCompare(b.hostname));
@@ -928,7 +940,7 @@
         downloadMergerHtml(bookmarks, 'diff');
     });
 
-    $('#m-to-editor').addEventListener('click', () => {
+    $('#m-to-editor')?.addEventListener('click', () => {
         const bookmarks = [...mergerMap.values()]
             .sort((a, b) => a.hostname.localeCompare(b.hostname));
 
@@ -1324,18 +1336,20 @@
     }
 
     function editorMutate(mutator, options = {}) {
-        const before = JSON.stringify(editorTree);
+        // 大規模データでは JSON.stringify が固まるので小さめの閾値でスキップ
+        const huge = editorTree && JSON.stringify(editorTree).length > 5_000_000;
+        const before = huge ? null : JSON.stringify(editorTree);
 
         try {
             const result = mutator();
 
             if (result === false) {
-                editorTree = JSON.parse(before);
+                if (before) editorTree = JSON.parse(before);
                 rebuildEditorIndex();
                 return false;
             }
 
-            pushUndoSnapshot(before);
+            if (before) pushUndoSnapshot(before);
             clearRedoStack();
 
             editorDirty = true;
@@ -1350,7 +1364,7 @@
 
             return true;
         } catch (error) {
-            editorTree = JSON.parse(before);
+            if (before) editorTree = JSON.parse(before);
             rebuildEditorIndex();
             renderEditorAll();
 
@@ -1557,7 +1571,16 @@
         }, 1500);
     }
 
-    const scheduleAutosave = debounce(saveAutosave, 1000);
+    // 省エネ: オートセーブを間引いてディスク書き込みを削減
+    // タブがバックグラウンド時は保存を一時停止し、フォアグラウンド復帰時にまとめて実行
+    const scheduleAutosave = debounce(() => {
+        if (document.hidden) return;
+        return saveAutosave();
+    }, 2500);
+
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && editorDirty) scheduleAutosave();
+    });
 
     async function restoreAutosave() {
         let snapshot = null;
@@ -1704,6 +1727,42 @@
                 'ok'
             );
         }
+    }
+
+    // マージ最適化との統合機能: URL浄化＋重複整理をエディタ内で一括実行
+    async function optimizeEditor() {
+        if (!editorTree.length) return;
+        const confirmed = await uiConfirm(
+            'URL浄化（トラッキングパラメータ除去）と重複整理を一括実行しますか？\n※ 元のツリー構造は保持します。ドメイン別フォルダに再編成したい場合はマージタブの「ドメイン別」を使ってください。',
+            { title: '✨ 最適化', okLabel: '実行する' }
+        );
+        if (!confirmed) return;
+
+        let cleaned = 0;
+        let removed = 0;
+
+        editorMutate(() => {
+            // URL浄化
+            (function walk(nodes) {
+                for (const n of nodes) {
+                    if (n.type === 'link' && n.url) {
+                        const c = cleanUrl(n.url);
+                        if (c !== n.url) { n.url = c; cleaned += 1; }
+                    }
+                    if (n.children) walk(n.children);
+                }
+            })(editorTree);
+
+            // 重複整理
+            removed = removeDuplicateLinks(editorTree);
+            editorDuplicateIds.clear();
+            editorSelection.clear();
+            return cleaned > 0 || removed > 0;
+        }, { render: true });
+
+        if (cleaned === 0 && removed === 0) toast('変更はありません', 'ok');
+        else toast(`最適化完了: 浄化 ${cleaned}件 / 重複削除 ${removed}件`, 'ok');
+        setStatus(`✨ 最適化完了（浄化 ${cleaned}件 / 削除 ${removed}件）`);
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -1924,6 +1983,52 @@
         });
     }
 
+    // ZIP的階層: ファイルごとに上位フォルダでまとめる
+    function wrapTreeWithParentFolder(rawTree, fileName) {
+        const base = String(fileName || 'imported')
+            .replace(/\.(html?|htm|json)$/i, '')
+            .replace(/^bookmarks?[_\-\s]*/i, '')
+            .trim() || 'imported';
+        return [{
+            id: generateEditorId(),
+            type: 'folder',
+            title: base,
+            tags: [],
+            rating: 0,
+            addDate: Math.floor(Date.now() / 1000),
+            children: rawTree
+        }];
+    }
+
+    // 同じ場所に寄せるマージ: フォルダ名が一致したらその中に、無ければ作る
+    function mergeIncomingTree(target, incoming) {
+        let added = 0;
+        for (const node of incoming) {
+            if (node.type === 'folder') {
+                const hasChildren = (node.children || []).length > 0;
+                if (!hasChildren) continue;
+                let dest = target.find(
+                    n => n.type === 'folder' && n.title.trim().toLowerCase() === node.title.trim().toLowerCase()
+                );
+                if (!dest) {
+                    dest = { id: node.id, type: 'folder', title: node.title, tags: node.tags, rating: node.rating, addDate: node.addDate, children: [] };
+                    target.push(dest);
+                }
+                added += mergeIncomingTree(dest.children, node.children || []);
+            } else {
+                const key = canonicalUrlKey(node.url);
+                const exists = target.some(
+                    n => n.type === 'link' && canonicalUrlKey(n.url) === key && key
+                );
+                if (!exists) {
+                    target.push(node);
+                    added += 1;
+                }
+            }
+        }
+        return added;
+    }
+
     function serializeEditorHtml() {
         function serializeNodes(nodes, depth) {
             const indent = '    '.repeat(depth);
@@ -1980,7 +2085,7 @@
 
             let rawTree;
 
-            if (text.length > 1_500_000) {
+            if (text.length > 200_000) {
                 setStatus('⚙️ 大きなファイルをバックグラウンド解析中...');
 
                 try {
@@ -2015,17 +2120,78 @@
                 throw new Error('有効なブックマークデータではありません');
             }
 
-            resetEditorTree(rawTree, {
-                preserveIds: isJson,
-                dirty: false
-            });
+            // 同じ場所に寄せて追い込む (フォルダ名一致なら中に入れる)
+            if (editorTree.length) {
+                const normalized = normalizeImportedTree(rawTree, isJson);
+                let added = 0;
+                editorMutate(() => {
+                    added = mergeIncomingTree(editorTree, normalized);
+                    return added > 0;
+                });
+                if (added === 0) setStatus('ℹ️ 重複しているので追加はありません');
+            } else {
+                resetEditorTree(rawTree, {
+                    preserveIds: isJson,
+                    dirty: false
+                });
+            }
 
-            toast(`「${file.name}」を読み込みました`, 'ok');
+            toast(`「${file.name}」を取り込みました（既存データを保持）`, 'ok');
             setStatus('✅ 読み込み完了');
         } catch (error) {
             console.error(error);
             toast(`読み込みエラー: ${error.message}`, 'err');
             setStatus('❌ 読み込みに失敗しました');
+        }
+    }
+
+    // 複数ブックマークデータを同時に開いてマージ (フォルダ階層を保持したまま統合)
+    // 仕様: エクスポート= Netscape HTML / ブラウザ= フォルダ階層 ツリー
+    // 最適化= 構造を維持したURL浄化+重複整理のみ。ドメイン別フラット化はしない
+    async function importEditorFiles(files) {
+        const list = [...files].filter(f => /\.(html?|htm|json)$/i.test(f.name));
+        if (!list.length) { toast('HTML/JSONファイルを選択してください', 'err'); return; }
+        if (list.length === 1) return importEditorFile(list[0]);
+
+        setStatus(`📚 ${list.length}ファイルをマージ中...`);
+        try {
+            const texts = await Promise.all(list.map(readFileText));
+            let totalTree = [];
+            let totalLinks = 0;
+
+            for (let i = 0; i < texts.length; i++) {
+                // 応答なし防止: ファイルごとにUIへ制御を返す
+                await nextFrame();
+                const isJson = /\.json$/i.test(list[i].name);
+                let rawTree;
+                if (isJson) {
+                    const parsed = JSON.parse(texts[i]);
+                    rawTree = Array.isArray(parsed) ? parsed : parsed.tree;
+                } else {
+                    rawTree = parseBookmarkHtml(texts[i]);
+                }
+                if (!Array.isArray(rawTree)) continue;
+                const normalized = normalizeImportedTree(rawTree, isJson);
+                const wrapped = wrapTreeWithParentFolder(normalized, list[i].name);
+                if (i === 0) totalTree = wrapped;
+                else mergeIncomingTree(totalTree, wrapped);
+                totalLinks += countEditorTree(wrapped).links;
+            }
+
+            if (editorTree.length) {
+                let added = 0;
+                editorMutate(() => {
+                    added = mergeIncomingTree(editorTree, totalTree);
+                    return added > 0;
+                });
+            } else {
+                resetEditorTree(totalTree, { preserveIds: false, dirty: false });
+            }
+            setStatus(`✅ ${list.length}ファイルを階層を保持してマージしました`);
+            toast(`マージ完了（フォルダ階層を保持）`, 'ok');
+        } catch (e) {
+            toast('マージ失敗: ' + e.message, 'err');
+            setStatus('❌ マージに失敗しました');
         }
     }
 
@@ -3069,6 +3235,8 @@
 
         $('#tb-export').disabled = empty;
         $('#tb-export-json').disabled = empty;
+        const tbOpt = $('#tb-optimize');
+        if (tbOpt) tbOpt.disabled = empty;
         $('#tb-dedup').disabled = empty;
         $('#tb-find-dup').disabled = empty;
         $('#tb-add-link').disabled = empty;
@@ -5298,7 +5466,9 @@
     });
 
     $('#ed-file-input').addEventListener('change', event => {
-        importEditorFile(event.target.files[0]);
+        const files = event.target.files;
+        if (files?.length > 1) importEditorFiles(files);
+        else importEditorFile(files?.[0]);
         event.target.value = '';
     });
 
@@ -5326,6 +5496,7 @@
     $('#tb-rate-btn').addEventListener('click', editSelectedRating);
 
     $('#tb-dedup').addEventListener('click', deduplicateAll);
+    $('#tb-optimize')?.addEventListener('click', optimizeEditor);
 
     $('#tb-find-dup').addEventListener('click', () => {
         editorShowDuplicates = !editorShowDuplicates;
@@ -6050,7 +6221,11 @@
         version: '5.0',
         loadRawTree: rawTree =>
             resetEditorTree(rawTree, { preserveIds: false, dirty: true }),
+        loadEditorHtml: html => loadEditorHtml(html),
         getTree: () => editorTree,
+        getMergerItems: () => [...mergerMap.values()].map(v => ({ title: v.title, url: v.url, hostname: v.hostname || 'Others', addDate: v.addDate })),
+        getMergerHtml: (prefix = 'merged') => buildMergerHtml([...mergerMap.values()].sort((a, b) => a.hostname.localeCompare(b.hostname))),
+        getMergerCount: () => mergerMap.size,
         toNetscapeHtml: serializeEditorHtml,
         showEditor: activateEditorTab,
         confirm: uiConfirm,

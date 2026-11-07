@@ -83,8 +83,9 @@ async function quickBackup() {
 
                 html += '    </DL><p>\n';
             }
-        } catch {
-            // readingList unavailable – ignore.
+        } catch (e) {
+            // readingList unavailable – log so failures aren't silent
+            console.warn('RL quickBackup query failed:', e?.message || e);
         }
 
         html += '</DL><p>\n';
@@ -215,6 +216,85 @@ chrome.alarms.onAlarm.addListener(async alarm => {
     );
 });
 
+// ── YouTube 高評価コレクター ──────────────────────────────────
+// yt-collector.js から届く「いいね付け/解除」を chrome.storage.local へ追記保存する。
+// 「ファイルとして保存」は storage 内データを JSON/HTML でエクスポートする形で実現する。
+const YT_LIKED_KEY = 'ytLiked';
+const YT_LIKED_LIMIT = 5000;
+
+async function getYtLiked() {
+    const { [YT_LIKED_KEY]: list } = await chrome.storage.local.get(YT_LIKED_KEY);
+    return Array.isArray(list) ? list : [];
+}
+
+async function saveYtLiked(list) {
+    // 上限超過時は古いものから切り捨てる
+    const capped = list.length > YT_LIKED_LIMIT
+        ? list.slice(list.length - YT_LIKED_LIMIT)
+        : list;
+    await chrome.storage.local.set({ [YT_LIKED_KEY]: capped });
+}
+
+async function ytAddLiked(video) {
+    if (!video?.id) return { ok: false };
+    const list = await getYtLiked();
+    const existing = list.find(v => v.id === video.id);
+    if (existing) {
+        existing.title = video.title || existing.title;
+        existing.channel = video.channel || existing.channel;
+        existing.url = video.url || existing.url;
+        existing.likedAt = video.likedAt || Date.now();
+    } else {
+        list.push({
+            id: video.id,
+            title: video.title || 'Untitled',
+            channel: video.channel || '',
+            url: video.url || `https://www.youtube.com/watch?v=${video.id}`,
+            likedAt: video.likedAt || Date.now()
+        });
+    }
+    await saveYtLiked(list);
+    await updateStat('ytCollected', 0);
+    return { ok: true, count: list.length };
+}
+
+async function ytRemoveLiked(video) {
+    if (!video?.id) return { ok: false };
+    const next = (await getYtLiked()).filter(v => v.id !== video.id);
+    await saveYtLiked(next);
+    return { ok: true, count: next.length };
+}
+
+// 既存の高評価リスト等から複数件をまとめて取り込む（重複は統合）
+async function ytImportLiked(videos) {
+    if (!Array.isArray(videos) || !videos.length) return { ok: false, error: '動画がありません' };
+    const list = await getYtLiked();
+    const byId = new Map(list.map(v => [v.id, v]));
+    let added = 0;
+    for (const video of videos) {
+        if (!video?.id) continue;
+        if (byId.has(video.id)) {
+            const e = byId.get(video.id);
+            e.title = video.title || e.title;
+            e.channel = video.channel || e.channel;
+            e.url = video.url || e.url;
+        } else {
+            byId.set(video.id, {
+                id: video.id,
+                title: video.title || 'Untitled',
+                channel: video.channel || '',
+                url: video.url || `https://www.youtube.com/watch?v=${video.id}`,
+                likedAt: video.likedAt || Date.now()
+            });
+            added += 1;
+        }
+    }
+    const next = [...byId.values()];
+    await saveYtLiked(next);
+    await updateStat('ytCollected', 0);
+    return { ok: true, added, count: next.length };
+}
+
 // ── messages from popup / pages ────────────────────────────────
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -240,6 +320,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
                 case 'quick-backup':
                     await quickBackup();
+                    sendResponse({ ok: true });
+                    break;
+
+                case 'yt-liked':
+                    sendResponse(await ytAddLiked(message.video));
+                    break;
+
+                case 'yt-unliked':
+                    sendResponse(await ytRemoveLiked(message.video));
+                    break;
+
+                case 'yt-import':
+                    sendResponse(await ytImportLiked(message.videos));
+                    break;
+
+                case 'yt-list':
+                    sendResponse({ ok: true, videos: await getYtLiked() });
+                    break;
+
+                case 'yt-clear':
+                    await saveYtLiked([]);
                     sendResponse({ ok: true });
                     break;
 

@@ -59,99 +59,26 @@
     <!-- =========================================================
          MAIN TAB BAR
     ========================================================== -->
-    <nav id="tab-bar" aria-label="メイン機能">
-        <button type="button" class="tab-btn active" data-tab="merger" aria-controls="tab-merger">
-            📚 マージ・最適化
-        </button>
-
-        <button type="button" class="tab-btn" data-tab="editor" aria-controls="tab-editor">
+    <nav id="tab-bar" aria-label="メイン機能" hidden>
+        <button type="button" class="tab-btn active" data-tab="editor" aria-controls="tab-editor">
             ✏️ エディタ
         </button>
     </nav>
 
-    <!-- =========================================================
-         MERGER
-    ========================================================== -->
-    <main id="tab-merger" class="tab-content active">
-        <div id="merger-view">
-            <p class="desc">
-                複数のブックマークHTMLを統合・最適化します。<br>
-                重複URL削除、ドメイン別フォルダ整理、ファイル間の差分抽出が可能です。
-            </p>
 
-            <section class="card" aria-labelledby="merger-file-title">
-                <h2 id="merger-file-title">📂 ファイルを選択</h2>
-
-                <div class="drop-zone" id="m-drop" role="button" tabindex="0" aria-label="ブックマークHTMLファイルを選択">
-                    <span class="dz-icon" aria-hidden="true">📁</span>
-
-                    <span>
-                        ここにHTMLをドラッグ&amp;ドロップ、またはクリックして選択
-                    </span>
-
-                    <br>
-
-                    <small>
-                        2ファイル以上で差分抽出も可能
-                    </small>
-                </div>
-
-                <input type="file" id="m-file-input" multiple accept=".html,.htm,text/html">
-
-                <div class="file-chips" id="m-chips" aria-live="polite"></div>
-            </section>
-
-            <section class="card" id="m-result" style="display:none" aria-labelledby="merger-result-title">
-                <h2 id="merger-result-title">📊 解析結果</h2>
-
-                <div class="stats-grid">
-                    <div class="stat-box">
-                        <span class="num" id="m-s-total">0</span>
-                        <span class="lbl">総リンク数（重複込み）</span>
-                    </div>
-
-                    <div class="stat-box">
-                        <span class="num" id="m-s-merged">0</span>
-                        <span class="lbl">統合後（ユニーク）</span>
-                    </div>
-
-                    <div class="stat-box">
-                        <span class="num" id="m-s-diff">0</span>
-                        <span class="lbl">差分のみ（非重複）</span>
-                    </div>
-                </div>
-
-                <div class="btn-group">
-                    <button type="button" id="m-dl-merge" class="dl-btn btn-blue" disabled>
-                        🔗 すべて統合してDL
-                    </button>
-
-                    <button type="button" id="m-dl-diff" class="dl-btn btn-green" disabled>
-                        ✂️ 差分のみDL
-                    </button>
-
-                    <button type="button" id="m-to-editor" class="dl-btn btn-purple" disabled>
-                        ✏️ エディタで開く
-                    </button>
-                </div>
-
-                <div class="log-box show" id="m-log" role="log" aria-live="polite"></div>
-            </section>
-        </div>
-    </main>
 
     <!-- =========================================================
          EDITOR
     ========================================================== -->
-    <main id="tab-editor" class="tab-content">
+    <main id="tab-editor" class="tab-content active">
         <div id="editor-view">
             <!-- =================================================
                  MAIN TOOLBAR
             ================================================== -->
             <div id="ed-main-toolbar" role="toolbar" aria-label="エディタ操作">
                 <div class="tb-group">
-                    <button type="button" class="tb-btn" id="tb-import">
-                        📂 開く
+                    <button type="button" class="tb-btn" id="tb-import" title="複数ファイル同時選択で自動マージ・重複削除">
+                        📂 開く（複数可）
                     </button>
 
                     <button type="button" class="tb-btn" id="tb-export" disabled>
@@ -162,7 +89,7 @@
                         📋 JSON
                     </button>
 
-                    <input type="file" id="ed-file-input" accept=".html,.htm,.json,text/html,application/json">
+                    <input type="file" id="ed-file-input" multiple accept=".html,.htm,.json,text/html,application/json">
                 </div>
 
                 <div class="tb-sep" aria-hidden="true"></div>
@@ -226,6 +153,10 @@
                 <div class="tb-sep" aria-hidden="true"></div>
 
                 <div class="tb-group">
+                    <button type="button" class="tb-btn tb-primary" id="tb-optimize" title="マージ最適化: URL浄化＋重複整理＋ドメイン別フォルダ整理を一括実行" disabled>
+                        ✨ 最適化
+                    </button>
+
                     <button type="button" class="tb-btn" id="tb-dedup" title="重複URLを整理" disabled>
                         🔀 重複整理
                     </button>
