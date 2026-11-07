@@ -70,17 +70,22 @@
 
   // いいねボタンのクリックを捕捉（イベント委譲で SPA 遷移後も追随）
   // YouTube 本家は #segmented-like-button、Shorts は #like-button、
-  // Music は ytmusic-like-button-renderer 内の button。全部拾う。
+  // Music は ytmusic-like-button-renderer / #like-button / #like-button-view 等に分散する。
   const LIKE_SELECTOR =
-    '#segmented-like-button button, #like-button button, #like-button, like-button-view-model button, ytmusic-like-button-renderer button';
+    '#segmented-like-button button, #like-button button, #like-button, like-button-view-model button, ytmusic-like-button-renderer button, ytmusic-like-button-renderer, #like-button-view button, [role="button"][aria-label*="いいね"], [aria-label*="いいね"]';
   document.addEventListener('click', (event) => {
     const button = event.target.closest?.(LIKE_SELECTOR);
     if (!button) return;
-    // 状態反映に少し待つ
-    setTimeout(() => {
-      if (isLiked(button)) send('yt-liked', true);
-      else send('yt-unliked', false);
-    }, 350);
+    // Music は状態反映が遅いので最大2秒ポーリングし、最後の状態で確定する
+    const started = Date.now();
+    const tick = () => {
+      try {
+        if (isLiked(button)) { send('yt-liked', true); return; }
+        if (Date.now() - started > 2000) { send('yt-unliked', false); return; }
+        setTimeout(tick, 300);
+      } catch { /* ignore */ }
+    };
+    setTimeout(tick, 350);
   }, true);
 
   // 既存リストページの一括取り込み（ポップアップから要求される）

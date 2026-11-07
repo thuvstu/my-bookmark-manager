@@ -278,136 +278,193 @@
         'feature'
     ]);
 
-    function getSafeHttpUrl(rawUrl) {
-        try {
-            const url = new URL(String(rawUrl ?? '').trim());
+    // Bookmark URLs flow through these helpers non-stop (import,
+    // dedupe, search, filters, rendering), so each distinct string is
+    // parsed at most once and the result is memoized.
+    const URL_ANALYSIS_CACHE_LIMIT = 50000;
+    const urlAnalysisCache = new Map();
 
-            if (!['http:', 'https:'].includes(url.protocol)) {
-                return '';
+    const EMPTY_URL_ANALYSIS = Object.freeze({
+        raw: '',
+        href: '',
+        safeHref: '',
+        key: '',
+        host: '',
+        hostname: '',
+        isHttp: false,
+        hasParams: false
+    });
+
+    const isHttpProtocol = protocol =>
+        protocol === 'http:' || protocol === 'https:';
+
+    function cleanParsedHttpUrl(url) {
+        // `url` must be a freshly parsed http(s) URL owned by the caller.
+        const params = url.searchParams;
+
+        for (const key of [...params.keys()]) {
+            if (
+                TRACKING_PARAMS.has(key) ||
+                /^utm_/i.test(key) ||
+                /clid$/i.test(key) ||
+                /^_hs/i.test(key)
+            ) {
+                params.delete(key);
             }
-
-            return url.href;
-        } catch {
-            return '';
         }
+
+        const hostname = url.hostname.replace(/^www\./i, '');
+
+        if (/google\./i.test(hostname) && url.pathname.includes('/search')) {
+            const allowed = new Set([
+                'q',
+                'tbm',
+                'tbs',
+                'start',
+                'num',
+                'hl',
+                'gl'
+            ]);
+
+            for (const key of [...params.keys()]) {
+                if (!allowed.has(key)) params.delete(key);
+            }
+        }
+
+        if (/amazon\./i.test(hostname)) {
+            const match = url.pathname.match(/\/dp\/([A-Z0-9]{10})/i);
+
+            if (match) {
+                return `${url.origin}/dp/${match[1].toUpperCase()}`;
+            }
+        }
+
+        if (/youtube\.com$/i.test(hostname) && url.pathname === '/watch') {
+            const videoId = params.get('v');
+            const listId = params.get('list');
+            const time = params.get('t');
+
+            if (videoId) {
+                let result = `${url.origin}/watch?v=${encodeURIComponent(videoId)}`;
+
+                if (listId) result += `&list=${encodeURIComponent(listId)}`;
+                if (time) result += `&t=${encodeURIComponent(time)}`;
+
+                return result;
+            }
+        }
+
+        if (/^(twitter\.com|x\.com)$/i.test(hostname)) {
+            const match = url.pathname.match(/\/status\/\d+/);
+
+            if (match) {
+                return `${url.origin}${match[0]}`;
+            }
+        }
+
+        if (/reddit\.com$/i.test(hostname)) {
+            return `${url.origin}${url.pathname.replace(/\/$/, '')}`;
+        }
+
+        return url.toString().replace(/\?$/, '');
+    }
+
+    function canonicalKeyFromHref(href) {
+        // `href` is already URL-normalized: host case and default ports
+        // are handled by the URL parser, so only the fragment and a
+        // dangling "?" have to go.
+        const hashIndex = href.indexOf('#');
+        let key = hashIndex === -1 ? href : href.slice(0, hashIndex);
+
+        if (key.endsWith('?')) key = key.slice(0, -1);
+
+        return key;
+    }
+
+    function analyzeUrl(rawUrl) {
+        const raw = String(rawUrl ?? '').trim();
+
+        if (!raw) return EMPTY_URL_ANALYSIS;
+
+        const cached = urlAnalysisCache.get(raw);
+        if (cached) return cached;
+
+        let href = raw;
+        let safeHref = '';
+        let key = '';
+        let host = '';
+        let hostname = '';
+        let isHttp = false;
+        let hasParams = false;
+
+        let url = null;
+
+        try {
+            url = new URL(raw);
+        } catch {
+            url = null;
+        }
+
+        if (url) {
+            host = url.hostname.toLowerCase();
+            hostname = host.replace(/^www\./i, '');
+
+            if (isHttpProtocol(url.protocol)) {
+                isHttp = true;
+                safeHref = url.href;
+
+                for (const _key of url.searchParams.keys()) {
+                    hasParams = true;
+                    break;
+                }
+
+                href = cleanParsedHttpUrl(url);
+                key = canonicalKeyFromHref(href);
+            }
+        }
+
+        const info = {
+            raw,
+            href,
+            safeHref,
+            key,
+            host,
+            hostname,
+            isHttp,
+            hasParams
+        };
+
+        if (urlAnalysisCache.size >= URL_ANALYSIS_CACHE_LIMIT) {
+            urlAnalysisCache.clear();
+        }
+
+        urlAnalysisCache.set(raw, info);
+
+        return info;
+    }
+
+    function getSafeHttpUrl(rawUrl) {
+        return analyzeUrl(rawUrl).safeHref;
     }
 
     function isSafeHttpUrl(rawUrl) {
-        return Boolean(getSafeHttpUrl(rawUrl));
+        return analyzeUrl(rawUrl).isHttp;
     }
 
     function cleanUrl(rawUrl) {
-        const input = String(rawUrl ?? '').trim();
-        if (!input) return '';
-
-        try {
-            const url = new URL(input);
-
-            if (!['http:', 'https:'].includes(url.protocol)) {
-                return input;
-            }
-
-            const params = url.searchParams;
-
-            for (const key of [...params.keys()]) {
-                if (
-                    TRACKING_PARAMS.has(key) ||
-                    /^utm_/i.test(key) ||
-                    /clid$/i.test(key) ||
-                    /^_hs/i.test(key)
-                ) {
-                    params.delete(key);
-                }
-            }
-
-            const hostname = url.hostname.replace(/^www\./i, '');
-
-            if (/google\./i.test(hostname) && url.pathname.includes('/search')) {
-                const allowed = new Set([
-                    'q',
-                    'tbm',
-                    'tbs',
-                    'start',
-                    'num',
-                    'hl',
-                    'gl'
-                ]);
-
-                for (const key of [...params.keys()]) {
-                    if (!allowed.has(key)) params.delete(key);
-                }
-            }
-
-            if (/amazon\./i.test(hostname)) {
-                const match = url.pathname.match(/\/dp\/([A-Z0-9]{10})/i);
-
-                if (match) {
-                    return `${url.origin}/dp/${match[1].toUpperCase()}`;
-                }
-            }
-
-            if (/youtube\.com$/i.test(hostname) && url.pathname === '/watch') {
-                const videoId = params.get('v');
-                const listId = params.get('list');
-                const time = params.get('t');
-
-                if (videoId) {
-                    let result = `${url.origin}/watch?v=${encodeURIComponent(videoId)}`;
-
-                    if (listId) result += `&list=${encodeURIComponent(listId)}`;
-                    if (time) result += `&t=${encodeURIComponent(time)}`;
-
-                    return result;
-                }
-            }
-
-            if (/^(twitter\.com|x\.com)$/i.test(hostname)) {
-                const match = url.pathname.match(/\/status\/\d+/);
-
-                if (match) {
-                    return `${url.origin}${match[0]}`;
-                }
-            }
-
-            if (/reddit\.com$/i.test(hostname)) {
-                return `${url.origin}${url.pathname.replace(/\/$/, '')}`;
-            }
-
-            return url.toString().replace(/\?$/, '');
-        } catch {
-            return input;
-        }
+        return analyzeUrl(rawUrl).href;
     }
 
     function canonicalUrlKey(rawUrl) {
-        const safe = getSafeHttpUrl(cleanUrl(rawUrl));
-        if (!safe) return '';
-
-        try {
-            const url = new URL(safe);
-
-            url.hash = '';
-            url.hostname = url.hostname.toLowerCase();
-
-            if (
-                (url.protocol === 'https:' && url.port === '443') ||
-                (url.protocol === 'http:' && url.port === '80')
-            ) {
-                url.port = '';
-            }
-
-            return url.href.replace(/\?$/, '');
-        } catch {
-            return '';
-        }
+        return analyzeUrl(rawUrl).key;
     }
 
     function getDomain(rawUrl) {
-        try {
-            return new URL(rawUrl).hostname.replace(/^www\./i, '').toLowerCase();
-        } catch {
-            return '';
-        }
+        return analyzeUrl(rawUrl).hostname;
+    }
+
+    function hasUrlParameters(rawUrl) {
+        return analyzeUrl(rawUrl).hasParams;
     }
 
     function safeOpenUrl(rawUrl) {
@@ -422,14 +479,6 @@
 
         if (opened) {
             opened.opener = null;
-        }
-    }
-
-    function hasUrlParameters(rawUrl) {
-        try {
-            return [...new URL(rawUrl).searchParams.keys()].length > 0;
-        } catch {
-            return false;
         }
     }
 
