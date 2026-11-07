@@ -295,12 +295,44 @@ async function ytImportLiked(videos) {
     return { ok: true, added, count: next.length };
 }
 
+// Low-bandwidth, user-triggered page metadata fetch. Never crawls in background.
+async function fetchBookmarkMetadata(rawUrl) {
+    let url;
+    try { url = new URL(rawUrl); } catch { throw new Error('URLが不正です'); }
+    if (!['http:', 'https:'].includes(url.protocol)) throw new Error('HTTP(S)以外は取得できません');
+    const key = `meta:${url.href}`;
+    const cached = await chrome.storage.local.get([key, 'bookmarkMetaCacheIndex']);
+    if (cached[key]?.savedAt && Date.now() - cached[key].savedAt < 7 * 86400000) return { ...cached[key], cached: true };
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4500);
+    try {
+        const response = await fetch(url.href, { signal: controller.signal, credentials: 'omit', cache: 'force-cache', redirect: 'follow', headers: { Accept: 'text/html,application/xhtml+xml;q=0.9' } });
+        const type = response.headers.get('content-type') || '';
+        if (!response.ok || !/html|xhtml/i.test(type)) throw new Error('HTMLページを取得できません');
+        const reader = response.body?.getReader(); let bytes = new Uint8Array();
+        if (reader) { while (bytes.length < 180000) { const { value, done } = await reader.read(); if (done) break; const part = value.subarray(0, 180000 - bytes.length); const joined = new Uint8Array(bytes.length + part.length); joined.set(bytes); joined.set(part, bytes.length); bytes = joined; if (part.length < value.length) { await reader.cancel(); break; } } }
+        const html = new TextDecoder().decode(bytes);
+        const extract = (pattern) => html.match(pattern)?.[1]?.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 400) || '';
+        const data = { title: extract(/<title[^>]*>([\s\S]*?)<\/title>/i), description: extract(/<meta[^>]+(?:name|property)=["'](?:description|og:description)["'][^>]+content=["']([^"']*)/i) || extract(/<meta[^>]+content=["']([^"']*)["'][^>]+(?:name|property)=["'](?:description|og:description)/i), keywords: extract(/<meta[^>]+name=["']keywords["'][^>]+content=["']([^"']*)/i), savedAt: Date.now() };
+        const index = (cached.bookmarkMetaCacheIndex || []).filter(item => item !== key);
+        index.push(key);
+        const expired = index.slice(0, Math.max(0, index.length - 200));
+        await chrome.storage.local.set({ [key]: data, bookmarkMetaCacheIndex: index.slice(-200) });
+        if (expired.length) await chrome.storage.local.remove(expired);
+        return { ...data, cached: false };
+    } finally { clearTimeout(timer); }
+}
+
 // ── messages from popup / pages ────────────────────────────────
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     (async () => {
         try {
             switch (message?.type) {
+                case 'bookmark-metadata':
+                    sendResponse({ ok: true, metadata: await fetchBookmarkMetadata(message.url) });
+                    break;
+
                 case 'notify':
                     await notify(message.title, message.message);
                     sendResponse({ ok: true });
